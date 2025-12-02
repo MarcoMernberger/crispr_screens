@@ -1,5 +1,5 @@
 [tool.poetry]
-name = "crispr-screens"
+name = "crispr_screens"
 version = "0.1.0"
 description = "This is a set of helper tools (e.g. Mageck helper) to analyse CRISPR screens"
 authors = ["Marco Mernberger <marco.mernberger@gmail.com>"]
@@ -27,9 +27,9 @@ furo = "^2024.0.0"
 ipykernel = "^6.29.0"
 pandas = "^2.2.2"
 
-[build-system]
-requires = ["poetry-core>=1.9.0"]
-build-backend = "poetry.core.masonry.api"
+# [build-system]
+#requires = ["poetry-core>=1.9.0"]
+#build-backend = "poetry.core.masonry.api"
 
 # --- Black ---
 [tool.black]
