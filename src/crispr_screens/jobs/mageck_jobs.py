@@ -327,6 +327,8 @@ def mageck_mle_job(
         norm_method=norm_method,
         other_parameter=other_parameter,
     ):
+        outfile = out_dir / f"{prefix}.gene_summary.tsv"
+
         def __dump(
             outfile,
             count_table=count_table,
@@ -347,4 +349,4 @@ def mageck_mle_job(
                 other_parameter=other_parameter,
             )
 
-    return FileGeneratingJob(outfile, __dump).depends_on(dependencies)
+        return FileGeneratingJob(outfile, __dump).depends_on(dependencies)

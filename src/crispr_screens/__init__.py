@@ -22,6 +22,9 @@ from .jobs.mageck_jobs import (
     write_filtered_mageck_comparison_job,
     run_mageck_scatterview_job,
     write_venn_job,
+    mageck_mle_job,
+    mageck_count_job,
+    mageck_test_job,
 )
 
 __all__ = [
@@ -29,4 +32,7 @@ __all__ = [
     "write_filtered_mageck_comparison_job",
     "run_mageck_scatterview_job",
     "write_venn_job",
+    "mageck_mle_job",
+    "mageck_count_job",
+    "mageck_test_job",
 ]
