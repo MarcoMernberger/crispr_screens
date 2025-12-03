@@ -276,7 +276,7 @@ def mageck_rra_job(
     other_parameter: Dict[str, str] = [],
     dependencies: List[Job] = [],
 ):
-    outfile = out_dir / f"{prefix}.gene_summary.tsv"
+    outfile = Path(out_dir) / f"{prefix}.gene_summary.tsv"
 
     def __dump(
         outfile,
@@ -317,6 +317,8 @@ def mageck_mle_job(
     other_parameter: Dict[str, str] = [],
     dependencies: List[Job] = [],
 ):
+    outfile = Path(out_dir) / f"{prefix}.gene_summary.tsv"
+
     def __dump(
         outfile,
         count_table=count_table,
@@ -327,10 +329,7 @@ def mageck_mle_job(
         norm_method=norm_method,
         other_parameter=other_parameter,
     ):
-        outfile = out_dir / f"{prefix}.gene_summary.tsv"
-
-        def __dump(
-            outfile,
+        mageck_mle(
             count_table=count_table,
             design_matrix=design_matrix,
             out_dir=out_dir,
@@ -338,15 +337,6 @@ def mageck_mle_job(
             control_sgrnas=control_sgrnas,
             norm_method=norm_method,
             other_parameter=other_parameter,
-        ):
-            mageck_mle(
-                count_table=count_table,
-                design_matrix=design_matrix,
-                out_dir=out_dir,
-                prefix=prefix,
-                control_sgrnas=control_sgrnas,
-                norm_method=norm_method,
-                other_parameter=other_parameter,
-            )
+        )
 
-        return FileGeneratingJob(outfile, __dump).depends_on(dependencies)
+    return FileGeneratingJob(outfile, __dump).depends_on(dependencies)

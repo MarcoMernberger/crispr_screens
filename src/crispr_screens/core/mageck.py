@@ -127,12 +127,13 @@ def filter_multiple_mageck_comparisons(
         eff_cols = find_matching(eff_patterns)
         fdr_cols = find_matching(fdr_patterns)
         z_cols = find_matching(z_patterns)
-
         if not fdr_cols or not eff_cols:
             # no valid columns for this comparison
             raise ValueError(f"No fdr or effect column found for key={key}.")
 
-        fdr_col = [x for x in fdr_cols if "wald-fdr" in x][0]
+        if len(fdr_cols) > 1:
+            fdr_cols = [x for x in fdr_cols if "wald-fdr" in x]
+        fdr_col = fdr_cols[0]
         eff_col = eff_cols[0]
         z_col = z_cols[0] if z_cols else None
 
