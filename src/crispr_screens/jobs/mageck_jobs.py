@@ -7,6 +7,7 @@ from crispr_screens.services.mageck_io import (
     write_venn,
 )
 from crispr_screens.r_integration.mageck_wrapper import run_mageck_scatterview
+from crispr_screens.core.mageck import mageck_count, mageck_test, mageck_mle
 
 
 def combine_comparison_output_job(
@@ -222,3 +223,128 @@ def write_venn_job(
     return MultiFileGeneratingJob([out_venn, out_dataframe], __dump).depends_on(
         dependencies
     )
+
+
+def mageck_count_job(
+    sgrna_list: Union[Path, str],
+    samples: dict,
+    out_dir: Union[Path, str],
+    prefix: str,
+    control_sgrnas=Optional[: Union[Path, str]],
+    norm_method: str = None,
+    pdf_report: bool = False,
+    other_parameter: Dict[str, str] = [],
+    dependencies: List[Job] = [],
+):
+    outfile = Path(out_dir) / f"{prefix}.count.txt"
+
+    def __dump(
+        outfile,
+        sgrna_list=sgrna_list,
+        samples=samples,
+        out_dir=out_dir,
+        prefix=prefix,
+        control_sgrnas=control_sgrnas,
+        norm_method=norm_method,
+        pdf_report=pdf_report,
+        other_parameter=other_parameter,
+    ):
+        mageck_count(
+            sgrna_list=sgrna_list,
+            samples=samples,
+            out_dir=out_dir,
+            prefix=prefix,
+            control_sgrnas=control_sgrnas,
+            norm_method=norm_method,
+            pdf_report=pdf_report,
+            other_parameter=other_parameter,
+        )
+
+    return FileGeneratingJob(outfile, __dump).depends_on(dependencies)
+
+
+def mageck_rra_job(
+    count_table: Union[Path, str],
+    treatment_ids: List[str],
+    control_ids: List[str],
+    out_dir: Union[Path, str],
+    prefix: str,
+    control_sgrnas: Optional[Union[Path, str]],
+    norm_method: str = None,
+    paired: bool = False,
+    pdf_report: bool = False,
+    other_parameter: Dict[str, str] = [],
+    dependencies: List[Job] = [],
+):
+    outfile = out_dir / f"{prefix}.gene_summary.tsv"
+
+    def __dump(
+        outfile,
+        count_table=count_table,
+        treatment_ids=treatment_ids,
+        control_ids=control_ids,
+        out_dir=out_dir,
+        prefix=prefix,
+        control_sgrnas=control_sgrnas,
+        norm_method=norm_method,
+        paired=paired,
+        pdf_report=pdf_report,
+        other_parameter=other_parameter,
+    ):
+        mageck_test(
+            count_table=count_table,
+            treatment_ids=treatment_ids,
+            control_ids=control_ids,
+            out_dir=out_dir,
+            prefix=prefix,
+            control_sgrnas=control_sgrnas,
+            norm_method=norm_method,
+            paired=paired,
+            pdf_report=pdf_report,
+            other_parameter=other_parameter,
+        )
+
+    return FileGeneratingJob(outfile, __dump).depends_on(dependencies)
+
+
+def mageck_mle_job(
+    count_table: Union[Path, str],
+    design_matrix: str,
+    out_dir: Union[Path, str],
+    prefix: str,
+    control_sgrnas: Optional[Union[Path, str]] = None,
+    norm_method: str = None,
+    other_parameter: Dict[str, str] = [],
+    dependencies: List[Job] = [],
+):
+    def __dump(
+        outfile,
+        count_table=count_table,
+        design_matrix=design_matrix,
+        out_dir=out_dir,
+        prefix=prefix,
+        control_sgrnas=control_sgrnas,
+        norm_method=norm_method,
+        other_parameter=other_parameter,
+    ):
+        def __dump(
+            outfile,
+            count_table=count_table,
+            design_matrix=design_matrix,
+            out_dir=out_dir,
+            prefix=prefix,
+            control_sgrnas=control_sgrnas,
+            norm_method=norm_method,
+            other_parameter=other_parameter,
+        ):
+            mageck_mle(
+                count_table=count_table,
+                design_matrix=design_matrix,
+                out_dir=out_dir,
+                prefix=prefix,
+                control_sgrnas=control_sgrnas,
+                norm_method=norm_method,
+                other_parameter=other_parameter,
+            )
+
+    return FileGeneratingJob(outfile, __dump).depends_on(dependencies)

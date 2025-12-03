@@ -1,7 +1,11 @@
 import pandas as pd
 import re
+import shutil
+import subprocess
+import ro
 from typing import Dict, Optional, Union, List
 from pandas import DataFrame
+from pathlib import Path
 
 
 def combine_comparisons(
@@ -159,7 +163,182 @@ def filter_multiple_mageck_comparisons(
     return df[global_mask].copy()
 
 
-# def get_top_genes_from_selected_groups(
-#     scatter_frame: DataFrame, group: str = "top", gene_id_column: str = "id"
-# ) -> DataFrame:
-#     scatter_frame_selected = scatter_frame[scatter_frame["group"] == "top"]
+def mageck_count(
+    sgrna_list: Union[Path, str],
+    samples: dict,
+    out_dir: Union[Path, str],
+    prefix: str,
+    control_sgrnas=Optional[: Union[Path, str]],
+    norm_method: str = None,
+    pdf_report: bool = False,
+    other_parameter: Dict[str, str] = [],
+):
+
+    Path(out_dir).mkdir(parents=True, exist_ok=True)
+
+    if isinstance(list(samples.values())[1], list):
+        fastqs = " ".join(f"{",".join(fastq)}" for fastq in samples.values())
+    else:
+        fastqs = " ".join(fastq for fastq in samples.values())
+
+    sample_labels = ",".join(sample_name for sample_name in samples.keys())
+
+    command_parameters = [
+        "-l",
+        sgrna_list,
+        "--fastq",
+        fastqs,
+        "--sample-label",
+        sample_labels,
+        "-n",
+        f"{out_dir}/{prefix}",
+    ]
+
+    if control_sgrnas is not None:
+        command_parameters.extend(["--control-sgrna", str(control_sgrnas)])
+
+    if norm_method is not None:
+        command_parameters.extend(["--norm-method", str(norm_method)])
+
+    if pdf_report:
+        command_parameters.append("--pdf-report")
+
+    command_parameters.extend(other_parameter)
+
+    command = ["mageck count"]
+    command.extend(command_parameters)
+    cmd = " ".join(command)
+
+    print(cmd)
+
+    mageck_count = subprocess.run(
+        cmd, capture_output=True, text=True, shell=True
+    )
+    print(mageck_count.stdout)
+    print(mageck_count.stderr)
+
+    # if pdf_report:
+    ro.r("rmarkdown::render")(f"{out_dir}/{prefix}.count_report.Rmd")
+
+    count_txt = Path(f"{out_dir}/{prefix}.count.txt")
+    count_tsv = Path(f"{out_dir}/{prefix}.count.tsv")
+    if count_txt.is_file():
+        shutil.copy(count_txt, count_tsv)
+
+
+def mageck_test(
+    count_table: Union[Path, str],
+    treatment_ids: List[str],
+    control_ids: List[str],
+    out_dir: Union[Path, str],
+    prefix: str,
+    control_sgrnas: Optional[Union[Path, str]],
+    norm_method: str = None,
+    paired: bool = False,
+    pdf_report: bool = False,
+    other_parameter: Dict[str, str] = [],
+):
+
+    Path(out_dir).mkdir(parents=True, exist_ok=True)
+
+    command_parameters = [
+        "-k",
+        count_table,
+        "-t",
+        ",".join(treatment_ids),
+        "-c",
+        ",".join(control_ids),
+        "-n",
+        f"{out_dir}/{prefix}",
+    ]
+
+    if control_sgrnas is not None:
+        command_parameters.extend(["--control-sgrna", str(control_sgrnas)])
+
+    if norm_method is not None:
+        command_parameters.extend(["--norm-method", str(norm_method)])
+
+    if paired:
+        command_parameters.append("--paired")
+
+    if pdf_report:
+        command_parameters.append("--pdf-report")
+
+    command_parameters.extend(other_parameter)
+
+    command = ["mageck test"]
+    command.extend(command_parameters)
+    cmd = " ".join(command)
+    print(cmd)
+
+    mageck_count = subprocess.run(
+        cmd, capture_output=True, text=True, shell=True
+    )
+    print(mageck_count.stdout)
+    print(mageck_count.stderr)
+
+    # if pdf_report:
+    ro.r("rmarkdown::render")(f"{out_dir}/{prefix}.report.Rmd")
+
+    gene_summary_txt = Path(f"{out_dir}/{prefix}.gene_summary.txt")
+    gene_summary_tsv = Path(f"{out_dir}/{prefix}.gene_summary.tsv")
+
+    sgrna_summary_txt = Path(f"{out_dir}/{prefix}.sgrna_summary.txt")
+    sgrna_summary_tsv = Path(f"{out_dir}/{prefix}.sgrna_summary.tsv")
+
+    if gene_summary_txt.is_file():
+        shutil.copy(gene_summary_txt, gene_summary_tsv)
+    if sgrna_summary_txt.is_file():
+        shutil.copy(sgrna_summary_txt, sgrna_summary_tsv)
+
+
+def mageck_mle(
+    count_table: Union[Path, str],
+    design_matrix: str,
+    out_dir: Union[Path, str],
+    prefix: str,
+    control_sgrnas: Optional[Union[Path, str]] = None,
+    norm_method: str = None,
+    other_parameter: Dict[str, str] = [],
+):
+
+    Path(out_dir).mkdir(parents=True, exist_ok=True)
+
+    command_parameters = [
+        "-k",
+        count_table,
+        "-d",
+        design_matrix,
+        "-n",
+        f"{out_dir}/{prefix}",
+    ]
+
+    if control_sgrnas is not None:
+        command_parameters.extend(["--control-sgrna", str(control_sgrnas)])
+
+    if norm_method is not None:
+        command_parameters.extend(["--norm-method", str(norm_method)])
+
+    command_parameters.extend(other_parameter)
+
+    command = ["mageck mle"]
+    command.extend(command_parameters)
+    cmd = " ".join(command)
+    print(cmd)
+
+    mageck_count = subprocess.run(
+        cmd, capture_output=True, text=True, shell=True
+    )
+    print(mageck_count.stdout)
+    print(mageck_count.stderr)
+
+    gene_summary_txt = Path(f"{out_dir}/{prefix}.gene_summary.txt")
+    gene_summary_tsv = Path(f"{out_dir}/{prefix}.gene_summary.tsv")
+
+    sgrna_summary_txt = Path(f"{out_dir}/{prefix}.sgrna_summary.txt")
+    sgrna_summary_tsv = Path(f"{out_dir}/{prefix}.sgrna_summary.tsv")
+
+    if gene_summary_txt.is_file():
+        shutil.copy(gene_summary_txt, gene_summary_tsv)
+    if sgrna_summary_txt.is_file():
+        shutil.copy(sgrna_summary_txt, sgrna_summary_tsv)
