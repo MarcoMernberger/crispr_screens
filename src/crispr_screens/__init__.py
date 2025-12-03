@@ -24,7 +24,7 @@ from .jobs.mageck_jobs import (
     write_venn_job,
     mageck_mle_job,
     mageck_count_job,
-    mageck_test_job,
+    mageck_rra_job,
 )
 
 __all__ = [
@@ -34,5 +34,5 @@ __all__ = [
     "write_venn_job",
     "mageck_mle_job",
     "mageck_count_job",
-    "mageck_test_job",
+    "mageck_rra_job",
 ]

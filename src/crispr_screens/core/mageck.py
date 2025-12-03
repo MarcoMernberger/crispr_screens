@@ -2,7 +2,7 @@ import pandas as pd
 import re
 import shutil
 import subprocess
-import ro
+import rpy2.robjects as ro
 from typing import Dict, Optional, Union, List
 from pandas import DataFrame
 from pathlib import Path
