@@ -1,10 +1,15 @@
-from pypipegraph2 import Job, FileGeneratingJob, MultiFileGeneratingJob
+from pypipegraph2 import (
+    Job,
+    FileGeneratingJob,
+    MultiFileGeneratingJob,
+    ParameterInvariant,
+)
 from pathlib import Path
-from typing import Dict, Optional, Union, List, Tuple, Literal
+from typing import Dict, Optional, Union, List, Tuple, Literal, Callable
 from crispr_screens.services.mageck_io import (
     write_filtered_mageck_comparison,
     combine_comparison_output,
-    write_venn,
+    create_query_control_sgrna_frames,
 )
 from crispr_screens.r_integration.mageck_wrapper import run_mageck_scatterview
 from crispr_screens.core.mageck import mageck_count, mageck_test, mageck_mle
@@ -187,44 +192,6 @@ def run_mageck_scatterview_job(
     return MultiFileGeneratingJob(outfiles, __dump).depends_on(dependencies)
 
 
-def write_venn_job(
-    outdir: Union[Path, str],
-    filebasename: str,
-    label_to_file: Dict[str, str],
-    id_cols: Union[List[str], str] = "id",
-    sep: str = "\t",
-    figsize: Tuple[float, float] = (6, 6),
-    title: str | None = None,
-    dependencies: List[Job] = [],
-):
-    out_venn = outdir / f"{filebasename}_venn.png"
-    out_dataframe = outdir / f"{filebasename}.tsv"
-
-    def __dump(
-        outfiles,
-        outdir=outdir,
-        filebasename=filebasename,
-        label_to_file=label_to_file,
-        id_cols=id_cols,
-        sep=sep,
-        figsize=figsize,
-        title=title,
-    ):
-        write_venn(
-            outdir=outdir,
-            filebasename=filebasename,
-            label_to_file=label_to_file,
-            id_cols=id_cols,
-            sep=sep,
-            figsize=figsize,
-            title=title,
-        )
-
-    return MultiFileGeneratingJob([out_venn, out_dataframe], __dump).depends_on(
-        dependencies
-    )
-
-
 def mageck_count_job(
     sgrna_list: Union[Path, str],
     samples: dict,
@@ -340,3 +307,53 @@ def mageck_mle_job(
         )
 
     return FileGeneratingJob(outfile, __dump).depends_on(dependencies)
+
+
+def create_query_control_sgrna_frames_job(
+    infile: Path,
+    outfiles: Tuple[Path],
+    control_prefix: str,
+    id_col: Optional[str] = None,
+    name_column: str = "name",
+    sgRNA_column: str = "sgRNA",
+    infer_genes: Optional[Callable] = None,
+    read_csv_kwargs: Optional[Dict] = None,
+    dependencies: List[Job] = [],
+):
+    def __dump(
+        outfiles,
+        infile=infile,
+        control_prefix=control_prefix,
+        id_col=id_col,
+        name_column=name_column,
+        sgRNA_column=sgRNA_column,
+        infer_genes=infer_genes,
+        read_csv_kwargs=read_csv_kwargs,
+    ):
+
+        create_query_control_sgrna_frames(
+            infile=infile,
+            outfiles=outfiles,
+            control_prefix=control_prefix,
+            id_col=id_col,
+            name_column=name_column,
+            sgRNA_column=sgRNA_column,
+            infer_genes=infer_genes,
+            read_csv_kwargs=read_csv_kwargs,
+        )
+
+    return MultiFileGeneratingJob(outfiles, __dump).depends_on(
+        dependencies
+        + [
+            ParameterInvariant(
+                f"PI_{outfiles[0].name}",
+                [
+                    str(infile),
+                    control_prefix,
+                    name_column,
+                    sgRNA_column,
+                    read_csv_kwargs,
+                ],
+            )
+        ]
+    )

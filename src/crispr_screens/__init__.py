@@ -21,11 +21,12 @@ from .jobs.mageck_jobs import (
     combine_comparison_output_job,
     write_filtered_mageck_comparison_job,
     run_mageck_scatterview_job,
-    write_venn_job,
     mageck_mle_job,
     mageck_count_job,
     mageck_rra_job,
+    create_query_control_sgrna_frames_job,
 )
+from .jobs.plot_jobs import write_venn_job, write_volcano_plot_job
 
 __all__ = [
     "combine_comparison_output_job",
@@ -35,4 +36,6 @@ __all__ = [
     "mageck_mle_job",
     "mageck_count_job",
     "mageck_rra_job",
+    "create_query_control_sgrna_frames_job",
+    "write_volcano_plot_job",
 ]

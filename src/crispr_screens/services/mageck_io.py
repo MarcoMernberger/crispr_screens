@@ -1,11 +1,11 @@
 import pandas as pd
-from typing import Dict, Optional, Union, List, Tuple
+from typing import Dict, Optional, Union, List, Tuple, Callable
 from pathlib import Path
 from crispr_screens.core.mageck import (
     filter_multiple_mageck_comparisons,
     combine_comparisons,
+    split_frame_to_control_and_query,
 )
-from crispr_screens.core.plots import plot_selected_venn
 
 
 def write_filtered_mageck_comparison(
@@ -48,31 +48,28 @@ def combine_comparison_output(
     merged_frame.to_csv(output_file, sep="\t", index=False)
 
 
-def write_venn(
-    outdir: Union[Path, str],
-    filebasename: str,
-    label_to_file: Dict[str, str],
-    id_cols: Union[List[str], str] = "id",
-    sep: str = "\t",
-    figsize: Tuple[float, float] = (6, 6),
-    title: str | None = None,
+def create_query_control_sgrna_frames(
+    infile: Path,
+    outfiles: Tuple[Path],
+    control_prefix: str,
+    id_col: Optional[str] = None,
+    name_column: str = "name",
+    sgRNA_column: str = "sgRNA",
+    infer_genes: Optional[Callable] = None,
+    read_csv_kwargs: Optional[Dict] = None,
 ):
-    outdir = Path(outdir)
-    outdir.parent.mkdir(exist_ok=True, parents=True)
-    out_venn = f"{filebasename}_venn"
-    out_dataframe = outdir / f"{filebasename}.tsv"
-    results = plot_selected_venn(
-        label_to_file=label_to_file,
-        id_cols=id_cols,
-        sep=sep,
-        figsize=figsize,
-        title=title,
+    outfiles[0].parent.mkdir(parents=True, exist_ok=True)
+    read_csv_kwargs = read_csv_kwargs or {"sep": "\t"}
+    df = pd.read_csv(infile, **read_csv_kwargs)
+    split_dfs = split_frame_to_control_and_query(
+        df,
+        control_prefix=control_prefix,
+        id_col=id_col,
+        name_column=name_column,
+        sgRNA_column=sgRNA_column,
+        infer_genes=infer_genes,
     )
-    save_figure(results["figure"], outdir, out_venn)
-    results["memberships"].to_csv(out_dataframe, sep="t", index=False)
-
-
-def save_figure(f, folder, name, bbox_inches="tight"):
-    folder.mkdir(exist_ok=True, parents=True)
-    for suffix in [".png", ".svg", ".pdf"]:
-        f.savefig(folder / (name + suffix), bbox_inches=bbox_inches)
+    split_dfs["control"].to_csv(
+        outfiles[1], sep="\t", index=False, header=False
+    )
+    split_dfs["query"].to_csv(outfiles[0], sep="\t", index=False, header=False)

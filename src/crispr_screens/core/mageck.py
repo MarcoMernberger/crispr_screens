@@ -3,7 +3,7 @@ import re
 import shutil
 import subprocess
 import rpy2.robjects as ro
-from typing import Dict, Optional, Union, List
+from typing import Dict, Optional, Union, List, Callable
 from pandas import DataFrame
 from pathlib import Path
 
@@ -343,3 +343,33 @@ def mageck_mle(
         shutil.copy(gene_summary_txt, gene_summary_tsv)
     if sgrna_summary_txt.is_file():
         shutil.copy(sgrna_summary_txt, sgrna_summary_tsv)
+
+
+def split_frame_to_control_and_query(
+    mageck_frame: DataFrame,
+    control_prefix: str,
+    id_col: Optional[str] = None,
+    name_column: str = "Name",
+    sgRNA_column: str = "sgRNA",
+    infer_genes: Optional[Callable] = None,
+) -> Dict[str, DataFrame]:
+
+    if id_col is None:
+        mageck_frame["id"] = "s_" + mageck_frame.index.astype(str)
+    else:
+        mageck_frame["id"] = mageck_frame[id_col].str.replace(
+            r"\s+", "_", regex=True
+        )
+
+    if infer_genes is not None:
+        mageck_frame[name_column] = infer_genes(mageck_frame)
+    else:
+        mageck_frame[name_column] = mageck_frame[name_column].str.replace(
+            r"\s+", "_", regex=True
+        )
+    control_rows = mageck_frame[
+        mageck_frame[name_column].str.startswith(control_prefix)
+    ].index
+    df_control = mageck_frame.loc[control_rows][["id"]].copy()
+    df_query = mageck_frame[["id", sgRNA_column, name_column]].copy()
+    return {"control": df_control, "query": df_query}
