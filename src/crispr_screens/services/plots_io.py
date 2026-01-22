@@ -47,6 +47,7 @@ def write_volcano_plot(
     ylabel: Optional[str] = None,
     figsize: Tuple[float, float] = (8, 6),
     y_clip_min: float = 1e-300,  # avoids -log10(0)
+    y_clip_max: Optional[float] = None,  # clips extreme y-values, shows as triangles
     label_fontsize: int = 9,
 ):
     if isinstance(df, str) or isinstance(df, Path):
@@ -71,6 +72,7 @@ def write_volcano_plot(
         ylabel=ylabel,
         figsize=figsize,
         y_clip_min=y_clip_min,
+        y_clip_max=y_clip_max,
         label_fontsize=label_fontsize,
     )
     save_figure(fig, Path(folder), str(filename))

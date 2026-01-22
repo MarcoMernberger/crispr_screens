@@ -10,6 +10,7 @@ from crispr_screens.services.mageck_io import (
     write_filtered_mageck_comparison,
     combine_comparison_output,
     create_query_control_sgrna_frames,
+    create_combine_gene_info_with_mageck_output
 )
 from crispr_screens.r_integration.mageck_wrapper import run_mageck_scatterview
 from crispr_screens.core.mageck import mageck_count, mageck_test, mageck_mle
@@ -357,3 +358,37 @@ def create_query_control_sgrna_frames_job(
             )
         ]
     )
+
+
+def create_combine_gene_info_with_mageck_output_job(
+        mageck_file: Path,
+        gene_info_file: Path,
+        output_file: Path,
+        name_column_mageck: str = "id", 
+        name_column_genes: str = "name_given", 
+        how: str = "inner",
+        columns_to_add: List[str] = ["gene_stable_id", "name", "chr", "start", "stop", "strand", "tss", "tes", "biotype"],
+        read_csv_kwargs: Optional[Dict] = None,
+        dependencies: List[Job] = [],
+):
+    def __dump(
+        output_file,
+        mageck_file=mageck_file,
+        gene_info_file=gene_info_file,
+        name_column_mageck=name_column_mageck,
+        name_column_genes=name_column_genes,
+        how=how,
+        columns_to_add=columns_to_add,
+        read_csv_kwargs=read_csv_kwargs,
+    ):
+        create_combine_gene_info_with_mageck_output(
+            mageck_file=mageck_file,
+            gene_info_file=gene_info_file,
+            output_file=output_file,
+            name_column_mageck=name_column_mageck,
+            name_column_genes=name_column_genes,
+            how=how,
+            columns_to_add=columns_to_add,
+            read_csv_kwargs=read_csv_kwargs,        
+        )
+    return FileGeneratingJob(output_file, __dump).depends_on(dependencies)

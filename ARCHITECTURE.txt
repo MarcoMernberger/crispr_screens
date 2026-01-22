@@ -1,0 +1,264 @@
+# Control sgRNA QC - Architecture Overview
+
+```
+┌─────────────────────────────────────────────────────────────────────────┐
+│                          INPUT DATA                                      │
+├─────────────────────────────────────────────────────────────────────────┤
+│                                                                           │
+│  ┌──────────────────────┐           ┌───────────────────────┐          │
+│  │ Count Table (.tsv)   │           │ Control sgRNAs (.txt) │          │
+│  ├──────────────────────┤           ├───────────────────────┤          │
+│  │ sgRNA  Gene  Sample1 │           │ s_76442               │          │
+│  │ s_1    GENE1   1234  │           │ s_76443               │          │
+│  │ s_2    GENE2   2345  │           │ s_76444               │          │
+│  │ ...                  │           │ ...                   │          │
+│  │ s_76442 NTC    1408  │           │ (1001 controls)       │          │
+│  └──────────────────────┘           └───────────────────────┘          │
+│                                                                           │
+└─────────────────────────────────────────────────────────────────────────┘
+                                    │
+                                    ▼
+┌─────────────────────────────────────────────────────────────────────────┐
+│                      CORE QC MODULE (core/qc.py)                        │
+├─────────────────────────────────────────────────────────────────────────┤
+│                                                                           │
+│  ┌────────────────────────────────────────────────────────────────┐    │
+│  │ control_sgrna_qc()                                              │    │
+│  ├────────────────────────────────────────────────────────────────┤    │
+│  │ 1. Load & filter control sgRNAs                                │    │
+│  │ 2. Calculate CPM from raw counts                               │    │
+│  │ 3. Compute Δc = log2(CPM_cond / CPM_baseline)                  │    │
+│  │ 4. Calculate metrics per condition:                            │    │
+│  │    • Median, IQR, tail-rate                                    │    │
+│  │    • Wilcoxon signed-rank test                                 │    │
+│  │ 5. Pairwise median comparisons                                 │    │
+│  │ 6. Replicate correlations                                      │    │
+│  │ 7. Return comprehensive results dict                           │    │
+│  └────────────────────────────────────────────────────────────────┘    │
+│                                    │                                     │
+│                                    ▼                                     │
+│  ┌────────────────────────────────────────────────────────────────┐    │
+│  │ Plotting Functions                                              │    │
+│  ├────────────────────────────────────────────────────────────────┤    │
+│  │ • plot_control_distribution_per_condition()                     │    │
+│  │   → Histograms + KDE, annotated with metrics                   │    │
+│  │                                                                  │    │
+│  │ • plot_pairwise_control_shifts()                                │    │
+│  │   → Heatmap of pairwise median shifts                          │    │
+│  │                                                                  │    │
+│  │ • plot_control_replicate_correlation()                          │    │
+│  │   → Correlation matrices per condition                         │    │
+│  │                                                                  │    │
+│  │ • plot_control_pca()                                            │    │
+│  │   → PCA biplot + scree plot                                    │    │
+│  └────────────────────────────────────────────────────────────────┘    │
+│                                    │                                     │
+│                                    ▼                                     │
+│  ┌────────────────────────────────────────────────────────────────┐    │
+│  │ generate_control_qc_report()                                    │    │
+│  ├────────────────────────────────────────────────────────────────┤    │
+│  │ High-level wrapper:                                             │    │
+│  │ • Runs control_sgrna_qc()                                       │    │
+│  │ • Generates all plots                                           │    │
+│  │ • Saves metrics and plots to files                             │    │
+│  │ • Returns report dict                                           │    │
+│  └────────────────────────────────────────────────────────────────┘    │
+│                                                                           │
+└─────────────────────────────────────────────────────────────────────────┘
+                                    │
+                                    ▼
+┌─────────────────────────────────────────────────────────────────────────┐
+│                   SERVICE LAYER (services/io.py)                        │
+├─────────────────────────────────────────────────────────────────────────┤
+│                                                                           │
+│  ┌────────────────────────────────────────────────────────────────┐    │
+│  │ control_qc_report()                                             │    │
+│  ├────────────────────────────────────────────────────────────────┤    │
+│  │ I/O wrapper for service layer                                   │    │
+│  │ • Handles file paths                                            │    │
+│  │ • Calls core.qc.generate_control_qc_report()                    │    │
+│  │ • Returns results                                               │    │
+│  └────────────────────────────────────────────────────────────────┘    │
+│                                                                           │
+└─────────────────────────────────────────────────────────────────────────┘
+                                    │
+                                    ▼
+┌─────────────────────────────────────────────────────────────────────────┐
+│              PYPIPEGRAPH LAYER (jobs/qc_jobs.py)                        │
+├─────────────────────────────────────────────────────────────────────────┤
+│                                                                           │
+│  ┌────────────────────────────────────────────────────────────────┐    │
+│  │ control_qc_job()                                                │    │
+│  ├────────────────────────────────────────────────────────────────┤    │
+│  │ PyPipeGraph2 job wrapper:                                       │    │
+│  │ • Creates MultiFileGeneratingJob                                │    │
+│  │ • Defines output files (metrics, plots)                        │    │
+│  │ • Adds function/parameter invariants                            │    │
+│  │ • Supports dependencies (e.g., mageck_count_job)               │    │
+│  │ • Integrates into workflow pipeline                             │    │
+│  └────────────────────────────────────────────────────────────────┘    │
+│                                                                           │
+└─────────────────────────────────────────────────────────────────────────┘
+                                    │
+                                    ▼
+┌─────────────────────────────────────────────────────────────────────────┐
+│                           OUTPUT FILES                                   │
+├─────────────────────────────────────────────────────────────────────────┤
+│                                                                           │
+│  Metrics:                          Plots (PNG + PDF):                   │
+│  ┌──────────────────────────┐     ┌───────────────────────────┐       │
+│  │ control_qc_metrics.tsv   │     │ control_qc_distribution   │       │
+│  │ control_qc_pairwise.tsv  │     │ control_qc_pairwise       │       │
+│  └──────────────────────────┘     │ control_qc_replicate      │       │
+│                                    │ control_qc_pca_condition  │       │
+│                                    │ control_qc_pca_replicate  │       │
+│                                    └───────────────────────────┘       │
+│                                                                           │
+└─────────────────────────────────────────────────────────────────────────┘
+
+
+═══════════════════════════════════════════════════════════════════════════
+                            USAGE PATTERNS
+═══════════════════════════════════════════════════════════════════════════
+
+┌─────────────────────────────────────────────────────────────────────────┐
+│ 1. STANDALONE USAGE (Direct Python)                                     │
+├─────────────────────────────────────────────────────────────────────────┤
+│                                                                           │
+│   from crispr_screens.core.qc import generate_control_qc_report         │
+│                                                                           │
+│   report = generate_control_qc_report(                                   │
+│       count_table="results/mageck_count/all/counts.count.tsv",          │
+│       control_sgrnas="incoming/control_sgRNAs.txt",                     │
+│       baseline_condition="Total",                                        │
+│       output_dir="results/qc/control_sgrnas",                           │
+│   )                                                                       │
+│                                                                           │
+└─────────────────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────────────┐
+│ 2. PYPIPEGRAPH INTEGRATION (Workflow)                                   │
+├─────────────────────────────────────────────────────────────────────────┤
+│                                                                           │
+│   from crispr_screens import control_qc_job                             │
+│                                                                           │
+│   qc_job = control_qc_job(                                               │
+│       count_table="results/mageck_count/all/counts.count.tsv",          │
+│       control_sgrnas="incoming/control_sgRNAs.txt",                     │
+│       baseline_condition="Total",                                        │
+│       output_dir="results/qc/control_sgrnas",                           │
+│       dependencies=[count_job],  # Depends on MAGeCK count              │
+│   )                                                                       │
+│                                                                           │
+└─────────────────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────────────┐
+│ 3. PROGRAMMATIC ACCESS (Custom Analysis)                                │
+├─────────────────────────────────────────────────────────────────────────┤
+│                                                                           │
+│   from crispr_screens.core.qc import control_sgrna_qc                   │
+│                                                                           │
+│   qc_results = control_sgrna_qc(                                         │
+│       count_table="counts.tsv",                                          │
+│       control_sgrnas="controls.txt",                                     │
+│       baseline_condition="Total",                                        │
+│   )                                                                       │
+│                                                                           │
+│   # Access individual components                                         │
+│   metrics = qc_results["metrics"]                                        │
+│   pairwise = qc_results["pairwise_median"]                               │
+│   correlations = qc_results["replicate_correlations"]                    │
+│                                                                           │
+└─────────────────────────────────────────────────────────────────────────┘
+
+
+═══════════════════════════════════════════════════════════════════════════
+                          QC CHECKS OVERVIEW
+═══════════════════════════════════════════════════════════════════════════
+
+┌─────────────────────────────────────────────────────────────────────────┐
+│ 1. UNIVARIATE (Per Condition vs Baseline)                               │
+├─────────────────────────────────────────────────────────────────────────┤
+│                                                                           │
+│   For each condition:                                                    │
+│   Δc = log2(CPM_condition / CPM_baseline)                                │
+│                                                                           │
+│   Metrics:                                                               │
+│   • Median(Δc)        → Should be ~0                                     │
+│   • IQR(Δc)           → Should be small                                  │
+│   • Tail rate         → Fraction |Δc| > 1 should be < 5%                │
+│   • Wilcoxon p-value  → Test H0: median = 0                             │
+│                                                                           │
+│   Visualization: Histogram + KDE with annotations                       │
+│                                                                           │
+└─────────────────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────────────┐
+│ 2. PAIRWISE (All Conditions)                                            │
+├─────────────────────────────────────────────────────────────────────────┤
+│                                                                           │
+│   For all pairs (A, B):                                                  │
+│   Δ_AB = log2(CPM_A / CPM_B)                                             │
+│   median(Δ_AB) → Should be ~0 everywhere                                │
+│                                                                           │
+│   Visualization: Heatmap (diverging colormap, centered at 0)            │
+│                                                                           │
+│   Interpretation:                                                        │
+│   • All cells ~0 → Controls stable                                       │
+│   • One row/col offset → That condition has global drift                │
+│                                                                           │
+└─────────────────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────────────┐
+│ 3. REPLICATE CONSISTENCY (Per Condition)                                │
+├─────────────────────────────────────────────────────────────────────────┤
+│                                                                           │
+│   For each condition with replicates:                                    │
+│   Pearson correlation on log2(CPM+1)                                     │
+│                                                                           │
+│   Visualization: Correlation matrices (one per condition)                │
+│                                                                           │
+│   Interpretation:                                                        │
+│   • Correlation > 0.9 → Good replicate consistency                       │
+│   • Correlation < 0.8 → Potential batch effect or technical issue       │
+│                                                                           │
+└─────────────────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────────────┐
+│ 4. MULTIVARIATE PCA (Global Pattern)                                    │
+├─────────────────────────────────────────────────────────────────────────┤
+│                                                                           │
+│   PCA on control sgRNAs (samples as observations)                        │
+│                                                                           │
+│   Two views:                                                             │
+│   • Colored by condition → Should NOT separate clearly                   │
+│   • Colored by replicate → Acceptable separation                         │
+│                                                                           │
+│   Key insight:                                                           │
+│   If PC1 separates conditions → Controls show treatment response         │
+│   If PC1 separates replicates → Technical variation (acceptable)         │
+│                                                                           │
+│   Visualization: PCA biplot + scree plot                                 │
+│                                                                           │
+└─────────────────────────────────────────────────────────────────────────┘
+
+
+═══════════════════════════════════════════════════════════════════════════
+                        DEPENDENCIES & LIBRARIES
+═══════════════════════════════════════════════════════════════════════════
+
+Core:
+  • pandas      → Data manipulation
+  • numpy       → Numerical operations
+
+Plotting:
+  • matplotlib  → Basic plotting
+  • seaborn     → Enhanced visualizations (heatmaps)
+
+Statistics:
+  • scipy       → Wilcoxon test, KDE
+  • sklearn     → PCA
+
+Files:
+  • pathlib     → Path handling
+  • typing      → Type hints

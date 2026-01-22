@@ -12,28 +12,28 @@ NormalizeMageckBetaTable <- function(
     if (!requireNamespace("MAGeCKFlute", quietly = TRUE)) {
         stop("Package 'MAGeCKFlute' is required but not installed.")
     }
-    
+
     if (!gene_col %in% colnames(df)) {
         stop("gene_col '", gene_col, "' not found in input table.")
     }
-    
+
     # get beta cols
     beta_cols <- grep(beta_pattern, colnames(df), value = TRUE)
     if (length(beta_cols) == 0) {
         stop("No beta columns found with pattern '", beta_pattern, "'.")
     }
-    
+
     # beta frame for NormalizeBeta
     beta_df <- df[, c(gene_col, beta_cols), drop = FALSE]
-    
+
     # normalize
     beta_norm <- MAGeCKFlute::NormalizeBeta(beta_df)
     beta_norm_only <- beta_norm[, beta_cols, drop = FALSE]
-    
+
     # new colnames for original beta columns
     raw_colnames <- paste0(beta_cols, raw_suffix)
     colnames(df)[match(beta_cols, colnames(df))] <- raw_colnames    
-    
+
     # merge
     df_out <- cbind(df, beta_norm_only)
     return(df_out)
@@ -75,7 +75,7 @@ RunMageckScatterView <- function(
     x_cut = NULL, # c(-neg_effect_cutoff, pos_effect_cutoff),
     y_cut = NULL # c(-neg_effect_cutoff, pos_effect_cutoff)
 ) {
-    
+
     infer_fdr_col <- function(colname) {
         if (grepl("\\|beta$", colname)) {
             # MLE
@@ -180,7 +180,7 @@ RunMageckScatterView <- function(
     diag_desc <- rep("no difference", n)
     diag_desc[delta >  delta_cutoff] <- paste0(y_col, " > ", x_col)
     diag_desc[delta < -delta_cutoff] <- paste0(y_col, " < ", x_col)
-    
+
     # selection X and Y (pos/neg/none) - are the genes selected for in screen?
     sel_x_cat <- ifelse(df_norm[[x_col]] <= neg_effect_cutoff, "neg",
                    ifelse(df_norm[[x_col]] >= pos_effect_cutoff, "pos", "none"))
@@ -233,7 +233,7 @@ RunMageckScatterView <- function(
                    ifelse(sel_y_cat == "pos", paste0(y_col, " enriched"),
                                          paste0(y_col, " no change")))
 
-    
+
     if (!is.null(fdr_x_col)) {
         sel_x_str <- ifelse(sig_x,  paste0(sel_x_str, " (sign.)"), paste0(sel_x_str, " (not sign.)"))
     }
@@ -253,7 +253,7 @@ RunMageckScatterView <- function(
     df_norm$description <- description
     df_norm$hit_class   <- hit_class
     df_norm$significant_filter <- significant_filter
-    
+
     # select hits (select + groups)
 
     # select - filter on diagonal

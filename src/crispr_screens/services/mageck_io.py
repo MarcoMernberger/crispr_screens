@@ -5,6 +5,7 @@ from crispr_screens.core.mageck import (
     filter_multiple_mageck_comparisons,
     combine_comparisons,
     split_frame_to_control_and_query,
+    combine_gene_info_with_mageck_output
 )
 
 
@@ -73,3 +74,28 @@ def create_query_control_sgrna_frames(
         outfiles[1], sep="\t", index=False, header=False
     )
     split_dfs["query"].to_csv(outfiles[0], sep="\t", index=False, header=False)
+
+
+def create_combine_gene_info_with_mageck_output(
+    mageck_file: Path,
+    gene_info_file: Path,
+    output_file: Path,
+    name_column_mageck: str = "id", 
+    name_column_genes: str = "name_given", 
+    how: str = "inner",
+    columns_to_add: List[str] = ["gene_stable_id", "name", "chr", "start", "stop", "strand", "tss", "tes", "biotype"],
+    read_csv_kwargs: Optional[Dict] = None,
+):
+    output_file.parent.mkdir(parents=True, exist_ok=True)
+    read_csv_kwargs = read_csv_kwargs or {"sep": "\t"}
+    mageck_df = pd.read_csv(mageck_file, **read_csv_kwargs)
+    gene_info_df = pd.read_csv(gene_info_file, **read_csv_kwargs)
+    combined_df = combine_gene_info_with_mageck_output(
+        mageck_df,
+        gene_info_df,
+        name_column_mageck=name_column_mageck,
+        name_column_genes=name_column_genes,
+        how=how,
+        columns_to_add=columns_to_add,
+    )
+    combined_df.to_csv(output_file, sep="\t", index=False)

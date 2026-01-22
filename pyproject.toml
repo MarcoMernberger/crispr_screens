@@ -15,6 +15,14 @@ dependencies = [
   "pydantic-settings>=2.5.0,<3.0.0",
   "python-dotenv>=1.0.1,<2.0.0",
   "typer[all]>=0.12.0,<0.13.0",
+  "pandas>=2.2.2,<3.0.0",
+  "numpy>=1.26.0,<3.0.0",
+  "matplotlib>=3.8.0,<4.0.0",
+  "seaborn>=0.13.0,<0.14.0",
+  "scipy>=1.11.0,<2.0.0",
+  "scikit-learn>=1.5.0,<2.0.0",
+  "reportlab>=4.0.0,<5.0.0",
+  "markdown>=3.5.0,<4.0.0",
 ]
 
 # uv: Development-Dependencies (nicht als veröffentlichte "Extras")
@@ -80,3 +88,5 @@ branch = true
 [tool.coverage.report]
 show_missing = true
 skip_covered = true
+
+

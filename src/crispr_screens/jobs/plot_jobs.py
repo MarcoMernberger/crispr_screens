@@ -60,7 +60,7 @@ def write_volcano_plot_job(
     top_n_labels: int = 0,
     transform_y: bool = True,  # True -> plot -log10(FDR), False -> plot raw FDR
     log_threshold: float = 1.0,  # abs(logFC) threshold
-    fdr_threshold: float = 0.05,  # FDR threshold (always interpreted on raw FDR scale)
+    fdr_threshold: float = 0.05,  # FDR threshold (always on raw FDR scale)
     point_size: float = 12,
     alpha: float = 0.75,
     title: Optional[str] = None,
@@ -68,6 +68,9 @@ def write_volcano_plot_job(
     ylabel: Optional[str] = None,
     figsize: Tuple[float, float] = (8, 6),
     y_clip_min: float = 1e-300,  # avoids -log10(0)
+    y_clip_max: Optional[
+        float
+    ] = None,  # clips extreme y-values, shows as triangles
     label_fontsize: int = 9,
     dependencies: List[Job] = [],
 ):
@@ -90,6 +93,7 @@ def write_volcano_plot_job(
         ylabel=ylabel,
         figsize=figsize,
         y_clip_min=y_clip_min,
+        y_clip_max=y_clip_max,
         label_fontsize=label_fontsize,
     ):
         write_volcano_plot(
@@ -110,6 +114,7 @@ def write_volcano_plot_job(
             ylabel=ylabel,
             figsize=figsize,
             y_clip_min=y_clip_min,
+            y_clip_max=y_clip_max,
             label_fontsize=label_fontsize,
         )
 
@@ -138,6 +143,7 @@ def write_volcano_plot_job(
             ylabel,
             figsize,
             y_clip_min,
+            y_clip_max,
             label_fontsize,
         ],
     )
