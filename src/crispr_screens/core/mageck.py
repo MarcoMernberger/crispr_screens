@@ -506,8 +506,8 @@ def mageck_plot(
 
 def combine_gene_info_with_mageck_output(
     df_mageck: DataFrame, df_genes: DataFrame, name_column_mageck: str = "id", 
-    name_column_genes: str = "name_given", how: str = "left",
-    columns_to_add: List[str] = ["gene_stable_id", "name", "chr", "start", "stop", "strand", "tss", "tes", "biotype"]) -> DataFrame:
+    name_column_genes: str = "Gene", how: str = "left",
+    columns_to_add: List[str] = ["gene_stable_id", "name", "chr", "start", "stop", "strand", "biotype"]) -> DataFrame:
     """
     Combine gene information dataframe with MAGeCK output dataframe.
 
@@ -526,4 +526,5 @@ def combine_gene_info_with_mageck_output(
         right_on=name_column_genes,
         how=how,
     )
+    merged_df.drop(columns=[name_column_genes], inplace=True)
     return merged_df

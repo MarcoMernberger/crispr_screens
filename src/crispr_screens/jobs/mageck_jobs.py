@@ -365,9 +365,9 @@ def create_combine_gene_info_with_mageck_output_job(
         gene_info_file: Path,
         output_file: Path,
         name_column_mageck: str = "id", 
-        name_column_genes: str = "name_given", 
+        name_column_genes: str = "Gene", 
         how: str = "inner",
-        columns_to_add: List[str] = ["gene_stable_id", "name", "chr", "start", "stop", "strand", "tss", "tes", "biotype"],
+        columns_to_add: List[str] = ["gene_stable_id", "name", "chr", "start", "stop", "strand", "biotype"],
         read_csv_kwargs: Optional[Dict] = None,
         dependencies: List[Job] = [],
 ):

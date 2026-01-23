@@ -749,193 +749,193 @@ def mageck_report_job(
     return job
 
 
-def comprehensive_qc_job(
-    count_table: Union[Path, str],
-    baseline_condition: str,
-    output_dir: Union[Path, str],
-    control_sgrnas: Union[Path, str] = None,
-    metadata_tsv: Union[Path, str] = None,
-    prefix: str = "qc",
-    project_name: str = "CRISPR Screen QC",
-    sgrna_col: str = "sgRNA",
-    gene_col: str = "Gene",
-    delimiter: str = "_",
-    norm_methods: List[str] = None,
-    run_control_qc: bool = True,
-    run_library_qc: bool = True,
-    generate_pdf: bool = False,
-    dependencies: List[Job] = [],
-) -> MultiFileGeneratingJob:
-    """
-    Create pypipegraph job for comprehensive QC analysis.
+# def comprehensive_qc_job(
+#     count_table: Union[Path, str],
+#     baseline_condition: str,
+#     output_dir: Union[Path, str],
+#     control_sgrnas: Union[Path, str] = None,
+#     metadata_tsv: Union[Path, str] = None,
+#     prefix: str = "qc",
+#     project_name: str = "CRISPR Screen QC",
+#     sgrna_col: str = "sgRNA",
+#     gene_col: str = "Gene",
+#     delimiter: str = "_",
+#     norm_methods: List[str] = None,
+#     run_control_qc: bool = True,
+#     run_library_qc: bool = True,
+#     generate_pdf: bool = False,
+#     dependencies: List[Job] = [],
+# ) -> MultiFileGeneratingJob:
+#     """
+#     Create pypipegraph job for comprehensive QC analysis.
 
-    Unified QC job that runs both control sgRNA QC and library-wide QC
-    using the new QCReport class from models module.
+#     Unified QC job that runs both control sgRNA QC and library-wide QC
+#     using the new QCReport class from models module.
 
-    Parameters
-    ----------
-    count_table : Path or str
-        Path to MAGeCK count table.
-    baseline_condition : str
-        Name of baseline condition (e.g., "Total", "T0").
-    output_dir : Path or str
-        Directory for output files.
-    control_sgrnas : Path or str, optional
-        Path to control sgRNA file. If None, control QC is skipped.
-    metadata_tsv : Path or str, optional
-        Path to metadata TSV. If None, metadata is inferred from column names.
-    prefix : str
-        Prefix for output files.
-    project_name : str
-        Project name for report title.
-    sgrna_col : str
-        Name of sgRNA ID column.
-    gene_col : str
-        Name of gene column.
-    delimiter : str
-        Delimiter for parsing condition_replicate.
-    norm_methods : List[str], optional
-        Normalization methods to test. Default: ["total", "median",
-        "stable_set"]
-    run_control_qc : bool
-        Whether to run control sgRNA QC (requires control_sgrnas).
-    run_library_qc : bool
-        Whether to run library-wide QC.
-    generate_pdf : bool
-        Whether to generate PDF report (requires reportlab).
-    dependencies : List[Job]
-        Pypipegraph jobs that this job depends on.
+#     Parameters
+#     ----------
+#     count_table : Path or str
+#         Path to MAGeCK count table.
+#     baseline_condition : str
+#         Name of baseline condition (e.g., "Total", "T0").
+#     output_dir : Path or str
+#         Directory for output files.
+#     control_sgrnas : Path or str, optional
+#         Path to control sgRNA file. If None, control QC is skipped.
+#     metadata_tsv : Path or str, optional
+#         Path to metadata TSV. If None, metadata is inferred from column names.
+#     prefix : str
+#         Prefix for output files.
+#     project_name : str
+#         Project name for report title.
+#     sgrna_col : str
+#         Name of sgRNA ID column.
+#     gene_col : str
+#         Name of gene column.
+#     delimiter : str
+#         Delimiter for parsing condition_replicate.
+#     norm_methods : List[str], optional
+#         Normalization methods to test. Default: ["total", "median",
+#         "stable_set"]
+#     run_control_qc : bool
+#         Whether to run control sgRNA QC (requires control_sgrnas).
+#     run_library_qc : bool
+#         Whether to run library-wide QC.
+#     generate_pdf : bool
+#         Whether to generate PDF report (requires reportlab).
+#     dependencies : List[Job]
+#         Pypipegraph jobs that this job depends on.
 
-    Returns
-    -------
-    MultiFileGeneratingJob
-        Job that generates QC reports and plots.
+#     Returns
+#     -------
+#     MultiFileGeneratingJob
+#         Job that generates QC reports and plots.
 
-    Notes
-    -----
-    This function replaces control_qc_job and standard_qc_job with a unified
-    approach using the QCReport class. For backward compatibility, the old
-    functions remain available but are deprecated.
+#     Notes
+#     -----
+#     This function replaces control_qc_job and standard_qc_job with a unified
+#     approach using the QCReport class. For backward compatibility, the old
+#     functions remain available but are deprecated.
 
-    Output Files
-    ------------
-    - qc_summary.md: Markdown QC report
-    - qc_summary.json: Machine-readable QC summary
-    - qc_summary.html: HTML QC report (if markdown available)
-    - qc_report.pdf: PDF QC report (if generate_pdf=True and reportlab present)
-    - qc_assets/plots/*.png: All QC plots
-    - qc_assets/tables/*.tsv: QC data tables
-    - qc_assets/tables/*.json: QC metrics in JSON format
+#     Output Files
+#     ------------
+#     - qc_summary.md: Markdown QC report
+#     - qc_summary.json: Machine-readable QC summary
+#     - qc_summary.html: HTML QC report (if markdown available)
+#     - qc_report.pdf: PDF QC report (if generate_pdf=True and reportlab present)
+#     - qc_assets/plots/*.png: All QC plots
+#     - qc_assets/tables/*.tsv: QC data tables
+#     - qc_assets/tables/*.json: QC metrics in JSON format
 
-    Examples
-    --------
-    >>> job = comprehensive_qc_job(
-    ...     count_table="brunello.count.tsv",
-    ...     baseline_condition="Total",
-    ...     output_dir="results/qc",
-    ...     control_sgrnas="control_sgRNAs.txt",
-    ...     project_name="My Screen",
-    ...     generate_pdf=True,
-    ... )
-    """
-    from crispr_screens.models import QCReport, QCConfig
+#     Examples
+#     --------
+#     >>> job = comprehensive_qc_job(
+#     ...     count_table="brunello.count.tsv",
+#     ...     baseline_condition="Total",
+#     ...     output_dir="results/qc",
+#     ...     control_sgrnas="control_sgRNAs.txt",
+#     ...     project_name="My Screen",
+#     ...     generate_pdf=True,
+#     ... )
+#     """
+#     from crispr_screens.models import QCReport, QCConfig
 
-    output_dir = Path(output_dir)
-    count_table = Path(count_table)
+#     output_dir = Path(output_dir)
+#     count_table = Path(count_table)
 
-    # Determine output files
-    output_files = [
-        output_dir / "qc_summary.md",
-        output_dir / "qc_summary.json",
-    ]
+#     # Determine output files
+#     output_files = [
+#         output_dir / "qc_summary.md",
+#         output_dir / "qc_summary.json",
+#     ]
 
-    # Add HTML if markdown available
-    if _import_util.find_spec("markdown") is not None:
-        output_files.append(output_dir / "qc_summary.html")
+#     # Add HTML if markdown available
+#     if _import_util.find_spec("markdown") is not None:
+#         output_files.append(output_dir / "qc_summary.html")
 
-    # Add PDF if requested and reportlab available
-    if generate_pdf:
-        if _import_util.find_spec("reportlab") is not None:
-            output_files.append(output_dir / "qc_report.pdf")
+#     # Add PDF if requested and reportlab available
+#     if generate_pdf:
+#         if _import_util.find_spec("reportlab") is not None:
+#             output_files.append(output_dir / "qc_report.pdf")
 
-    def run_qc():
-        """Execute comprehensive QC analysis."""
-        # Create QC configuration
-        config = QCConfig(
-            project_name=project_name,
-            out_dir=output_dir,
-            sgrna_col=sgrna_col,
-            gene_col=gene_col,
-            delimiter=delimiter,
-            baseline_condition=baseline_condition,
-            norm_methods=norm_methods or ["total", "median", "stable_set"],
-        )
+#     def run_qc():
+#         """Execute comprehensive QC analysis."""
+#         # Create QC configuration
+#         config = QCConfig(
+#             project_name=project_name,
+#             out_dir=output_dir,
+#             sgrna_col=sgrna_col,
+#             gene_col=gene_col,
+#             delimiter=delimiter,
+#             baseline_condition=baseline_condition,
+#             norm_methods=norm_methods or ["total", "median", "stable_set"],
+#         )
 
-        # Create QC report
-        qc_report = QCReport(
-            config=config,
-            count_table_path=count_table,
-            control_sgrnas_path=control_sgrnas,
-            metadata_path=metadata_tsv,
-        )
+#         # Create QC report
+#         qc_report = QCReport(
+#             config=config,
+#             count_table_path=count_table,
+#             control_sgrnas_path=control_sgrnas,
+#             metadata_path=metadata_tsv,
+#         )
 
-        # Run analysis
-        qc_report.build(
-            run_control_qc=run_control_qc and control_sgrnas is not None,
-            run_library_qc=run_library_qc,
-            generate_pdf=generate_pdf,
-        )
+#         # Run analysis
+#         qc_report.build(
+#             run_control_qc=run_control_qc and control_sgrnas is not None,
+#             run_library_qc=run_library_qc,
+#             generate_pdf=generate_pdf,
+#         )
 
-    # Create job
-    job = MultiFileGeneratingJob(
-        output_files=output_files,
-        calc_function=run_qc,
-    ).depends_on(*dependencies)
+#     # Create job
+#     job = MultiFileGeneratingJob(
+#         output_files=output_files,
+#         calc_function=run_qc,
+#     ).depends_on(*dependencies)
 
-    # Add function invariants for QC functions
-    from crispr_screens.core import qc
+#     # Add function invariants for QC functions
+#     from crispr_screens.core import qc
 
-    job.depends_on(
-        FunctionInvariant("qc.load_control_sgrnas", qc.load_control_sgrnas)
-    )
-    job.depends_on(FunctionInvariant("qc.read_counts", qc.read_counts))
-    job.depends_on(FunctionInvariant("qc.calculate_cpm", qc.calculate_cpm))
-    job.depends_on(
-        FunctionInvariant("qc.calculate_delta_logfc", qc.calculate_delta_logfc)
-    )
-    job.depends_on(
-        FunctionInvariant(
-            "qc.qc_controls_neutrality", qc.qc_controls_neutrality
-        )
-    )
-    job.depends_on(
-        FunctionInvariant(
-            "qc.choose_best_normalization", qc.choose_best_normalization
-        )
-    )
-    job.depends_on(
-        FunctionInvariant(
-            "qc.recommend_analysis_method", qc.recommend_analysis_method
-        )
-    )
+#     job.depends_on(
+#         FunctionInvariant("qc.load_control_sgrnas", qc.load_control_sgrnas)
+#     )
+#     job.depends_on(FunctionInvariant("qc.read_counts", qc.read_counts))
+#     job.depends_on(FunctionInvariant("qc.calculate_cpm", qc.calculate_cpm))
+#     job.depends_on(
+#         FunctionInvariant("qc.calculate_delta_logfc", qc.calculate_delta_logfc)
+#     )
+#     job.depends_on(
+#         FunctionInvariant(
+#             "qc.qc_controls_neutrality", qc.qc_controls_neutrality
+#         )
+#     )
+#     job.depends_on(
+#         FunctionInvariant(
+#             "qc.choose_best_normalization", qc.choose_best_normalization
+#         )
+#     )
+#     job.depends_on(
+#         FunctionInvariant(
+#             "qc.recommend_analysis_method", qc.recommend_analysis_method
+#         )
+#     )
 
-    # Add parameter invariant
-    job.depends_on(
-        ParameterInvariant(
-            "comprehensive_qc_params",
-            (
-                str(count_table),
-                baseline_condition,
-                str(output_dir),
-                str(control_sgrnas) if control_sgrnas else None,
-                str(metadata_tsv) if metadata_tsv else None,
-                project_name,
-                tuple(norm_methods) if norm_methods else None,
-                run_control_qc,
-                run_library_qc,
-                generate_pdf,
-            ),
-        )
-    )
+#     # Add parameter invariant
+#     job.depends_on(
+#         ParameterInvariant(
+#             "comprehensive_qc_params",
+#             (
+#                 str(count_table),
+#                 baseline_condition,
+#                 str(output_dir),
+#                 str(control_sgrnas) if control_sgrnas else None,
+#                 str(metadata_tsv) if metadata_tsv else None,
+#                 project_name,
+#                 tuple(norm_methods) if norm_methods else None,
+#                 run_control_qc,
+#                 run_library_qc,
+#                 generate_pdf,
+#             ),
+#         )
+#     )
 
-    return job
+#     return job

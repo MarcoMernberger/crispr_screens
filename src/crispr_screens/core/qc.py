@@ -10,10 +10,422 @@ import json
 import warnings
 import numpy as np
 import pandas as pd
+import matplotlib.pyplot as plt
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple, Union
 from scipy import stats
 from pandas import DataFrame
+from .plots import (
+    plot_ma_grid,
+    plot_library_pca,
+    plot_sample_correlations,
+)
+
+
+def generate_standard_qc_report(
+    count_tsv: Union[Path, str],
+    output_dir: Union[Path, str],
+    metadata_tsv: Optional[Union[Path, str]] = None,
+    control_sgrna_txt: Optional[Union[Path, str]] = None,
+    baseline_condition: str = "total",
+    sgrna_col: str = "sgRNA",
+    gene_col: str = "Gene",
+    delimiter: str = "_",
+    norm_methods: Optional[List[str]] = None,
+    pseudocount: float = 1.0,
+    save_formats: Optional[List[str]] = None,
+) -> Dict:
+    """
+    Generate comprehensive standard QC report for CRISPR screens.
+
+    Analyzes full library with multiple normalization methods, compares them,
+    and recommends best normalization and analysis method (RRA vs MLE).
+
+    Parameters
+    ----------
+    count_tsv : Path or str
+        Path to MAGeCK count table TSV.
+    output_dir : Path or str
+        Output directory for all QC files.
+    metadata_tsv : Path or str, optional
+        Path to metadata file with sample/condition/replicate columns.
+        If None, will parse from column names using delimiter.
+    control_sgrna_txt : Path or str, optional
+        Path to control sgRNA file. If provided, will run control neutrality QC
+        and optionally include control-based normalization.
+    baseline_condition : str
+        Name of baseline condition (e.g., "total", "T0").
+    sgrna_col : str
+        sgRNA column name.
+    gene_col : str
+        Gene column name.
+    delimiter : str
+        Delimiter for parsing condition_replicate from column names.
+    norm_methods : list of str, optional
+        Normalization methods to test. Default: ["median", "total",
+        "stable_set"].
+        If controls provided and good: adds "control".
+    pseudocount : float
+        Pseudocount for log transformation.
+    save_formats : list of str, optional
+        Plot formats to save. Default: ["png"].
+
+    Returns
+    -------
+    dict
+        Comprehensive QC results with keys:
+        - library_stats: DataFrame
+        - qc_by_norm: dict mapping norm_method -> QC results
+        - size_factors: dict mapping norm_method -> Series
+        - best_normalization: dict with recommendation
+        - analysis_recommendation: dict with RRA vs MLE recommendation
+        - control_qc: dict (if controls provided)
+        - files: dict mapping output_name -> file path
+    """
+
+    # Setup
+    output_dir = Path(output_dir)
+    output_dir.mkdir(exist_ok=True, parents=True)
+
+    if save_formats is None:
+        save_formats = ["png"]
+
+    if norm_methods is None:
+        norm_methods = ["median", "total", "stable_set"]
+
+    print("=" * 60)
+    print("Standard CRISPR Screen QC Pipeline")
+    print("=" * 60)
+
+    saved_files = {}
+
+    # Step 1: Load data
+    print("\n[1/9] Loading count data...")
+    count_df, sample_cols = read_counts(count_tsv, sgrna_col, gene_col)
+    print(f"  Loaded {len(count_df)} sgRNAs, {len(sample_cols)} samples")
+
+    # Step 2: Parse/load metadata
+    print("\n[2/9] Parsing metadata...")
+    if metadata_tsv is not None:
+        metadata_df = read_metadata(metadata_tsv)
+        # Build conditions dict from metadata
+        conditions_dict = {}
+        for _, row in metadata_df.iterrows():
+            condition = row["condition"]
+            sample = row["sample"]
+            if condition not in conditions_dict:
+                conditions_dict[condition] = []
+            conditions_dict[condition].append(sample)
+    else:
+        conditions_dict, metadata_df = parse_metadata_from_columns(
+            sample_cols, delimiter
+        )
+
+    print(
+        f"  Found {len(conditions_dict)} conditions: {list(conditions_dict.keys())}"  # noqa: E501
+    )
+
+    # Validate baseline
+    if baseline_condition not in conditions_dict:
+        raise ValueError(
+            f"Baseline condition '{baseline_condition}' not found. "
+            f"Available: {list(conditions_dict.keys())}"
+        )
+    baseline_cols = conditions_dict[baseline_condition]
+
+    # Step 3: Library stats
+    print("\n[3/9] Computing library statistics...")
+    lib_stats = compute_library_stats(count_df, sample_cols)
+    lib_stats_file = output_dir / "library_stats.tsv"
+    lib_stats.to_csv(lib_stats_file, sep="\t", index=False)
+    saved_files["library_stats"] = lib_stats_file
+    print(f"  Saved to {lib_stats_file}")
+
+    # Step 4: Load controls if provided
+    controls_data = None
+    if control_sgrna_txt is not None:
+        print("\n[4/9] Loading control sgRNAs and testing neutrality...")
+        control_ids = load_control_sgrnas(control_sgrna_txt)
+        print(f"  Loaded {len(control_ids)} control sgRNAs")
+
+        # Test control neutrality
+        controls_data = qc_controls_neutrality(
+            count_df,
+            sample_cols,
+            control_ids,
+            conditions_dict,
+            baseline_cols,
+            sgrna_col,
+            pseudocount,
+            baseline_condition=baseline_condition,
+        )
+
+        if controls_data["controls_good"]:
+            print("  ✓ Controls are neutral - suitable for normalization")
+            if "control" not in norm_methods:
+                norm_methods.append("control")
+        else:
+            print("  ✗ Controls show systematic biases:")
+            for reason in controls_data["reasons"]:
+                print(f"    - {reason}")
+            print("  → Control-based normalization NOT recommended")
+
+        # Save control QC
+        control_qc_file = output_dir / "control_neutrality_qc.json"
+        with open(control_qc_file, "w") as f:
+            # Convert to JSON-serializable format
+            json_data = {
+                "controls_good": controls_data["controls_good"],
+                "metrics": controls_data["metrics"],
+                "overall_median_corr": (
+                    float(controls_data["overall_median_corr"])
+                    if not np.isnan(controls_data["overall_median_corr"])
+                    else None
+                ),
+                "reasons": controls_data["reasons"],
+            }
+            json.dump(json_data, f, indent=2)
+        saved_files["control_neutrality"] = control_qc_file
+    else:
+        print("\n[4/9] No controls provided - skipping control QC")
+
+    # Step 5: Compute size factors for all methods
+    print(
+        f"\n[5/9] Computing size factors for normalization methods: {norm_methods}"  # noqa: E501
+    )
+    size_factors_dict = {}
+
+    for method in norm_methods:
+        if method == "total":
+            sf = compute_size_factors_total(count_df, sample_cols)
+        elif method == "median":
+            sf = compute_size_factors_median_ratio(count_df, sample_cols)
+        elif method == "stable_set":
+            # First compute logCPM with simple CPM
+            simple_cpm = calculate_cpm(count_df, sample_cols)
+            logcpm_simple = np.log2(simple_cpm[sample_cols] + 1)
+            stable_guides = select_stable_guides(logcpm_simple, sample_cols)
+            print(
+                f"  Selected {len(stable_guides)} stable guides ({len(stable_guides)/len(count_df)*100:.1f}%)"  # noqa: E501
+            )
+            sf = compute_size_factors_stable_set(
+                count_df, sample_cols, stable_guides
+            )
+        elif method == "control":
+            if control_sgrna_txt is None:
+                warnings.warn(f"Skipping '{method}' - no controls provided")
+                continue
+            sf = compute_size_factors_control(
+                count_df, sample_cols, control_ids, sgrna_col
+            )
+        else:
+            warnings.warn(f"Unknown normalization method: {method}")
+            continue
+
+        size_factors_dict[method] = sf
+        print(
+            f"  {method}: median SF = {sf.median():.3f}, range = [{sf.min():.3f}, {sf.max():.3f}]"  # noqa: E501
+        )
+
+    # Save size factors
+    sf_df = pd.DataFrame(size_factors_dict)
+    sf_file = output_dir / "size_factors.tsv"
+    sf_df.to_csv(sf_file, sep="\t")
+    saved_files["size_factors"] = sf_file
+
+    # Compare size factors
+    sf_comparison = compare_size_factors(size_factors_dict)
+    sf_comp_file = output_dir / "size_factors_comparison.tsv"
+    sf_comparison.to_csv(sf_comp_file, sep="\t", index=False)
+    saved_files["size_factors_comparison"] = sf_comp_file
+
+    # Step 6: Run QC for each normalization method
+    print("\n[6/9] Running QC analysis for each normalization method...")
+    qc_by_norm = {}
+
+    for method in size_factors_dict.keys():
+        print(f"  Analyzing '{method}' normalization...")
+
+        # Apply normalization
+        norm_counts = apply_size_factors(
+            count_df, sample_cols, size_factors_dict[method]
+        )
+
+        # Compute CPM on normalized counts
+        norm_cpm = calculate_cpm(norm_counts, sample_cols)
+        logcpm = np.log2(norm_cpm[sample_cols] + pseudocount)
+
+        # Compute delta (non-baseline vs baseline)
+        non_baseline_cols = [c for c in sample_cols if c not in baseline_cols]
+        delta_df = calculate_delta_logfc(
+            norm_cpm, non_baseline_cols, baseline_cols, pseudocount
+        )
+
+        # QC metrics
+        logfc_dist = qc_logfc_distribution(
+            delta_df, conditions_dict, baseline_condition=baseline_condition
+        )
+        rep_consistency = qc_replicate_consistency(
+            delta_df, conditions_dict, baseline_condition=baseline_condition
+        )
+
+        qc_by_norm[method] = {
+            "logfc_dist": logfc_dist,
+            "replicate_consistency": rep_consistency,
+            "logcpm": logcpm,
+            "delta": delta_df,
+        }
+
+        # Save per-method metrics
+        method_dir = output_dir / f"norm_{method}"
+        method_dir.mkdir(exist_ok=True)
+
+        logfc_dist.to_csv(
+            method_dir / "logfc_distribution.tsv", sep="\t", index=False
+        )
+        rep_consistency["summary"].to_csv(
+            method_dir / "replicate_consistency.tsv", sep="\t", index=False
+        )
+
+        # Generate MA plots for this normalization
+        print("    Generating MA plots...")
+        fig_ma, ma_metrics = plot_ma_grid(
+            logcpm, conditions_dict, baseline_cols
+        )
+        for fmt in save_formats:
+            ma_file = method_dir / f"ma_plots.{fmt}"
+            fig_ma.savefig(ma_file, dpi=300, bbox_inches="tight")
+        plt.close(fig_ma)
+
+    # Step 7: Choose best normalization
+    print("\n[7/9] Selecting best normalization method...")
+    norm_recommendation = choose_best_normalization(
+        qc_by_norm, size_factors_dict
+    )
+    best_method = norm_recommendation["best_method"]
+    print(f"  ✓ Recommended: {best_method}")
+    print("  Reasons:")
+    for reason in norm_recommendation["reasons"]:
+        print(f"    - {reason}")
+
+    # Save recommendation
+    norm_rec_file = output_dir / "normalization_recommendation.json"
+    with open(norm_rec_file, "w") as f:
+        json.dump(
+            {
+                "best_method": norm_recommendation["best_method"],
+                "ranking": [
+                    {"method": m, "score": float(s)}
+                    for m, s in norm_recommendation["ranking"]
+                ],
+                "reasons": norm_recommendation["reasons"],
+            },
+            f,
+            indent=2,
+        )
+    saved_files["normalization_recommendation"] = norm_rec_file
+
+    # Step 8: Recommend analysis method (RRA vs MLE)
+    print("\n[8/9] Recommending analysis method (RRA vs MLE)...")
+    analysis_rec = recommend_analysis_method(
+        metadata_df, qc_by_norm[best_method], baseline_condition
+    )
+    print(f"  ✓ Recommended: {analysis_rec['preferred_method']}")
+    print("  Reasons:")
+    for reason in analysis_rec["reasons"]:
+        print(f"    - {reason}")
+
+    # Save recommendation
+    analysis_rec_file = output_dir / "analysis_recommendation.json"
+    with open(analysis_rec_file, "w") as f:
+        json.dump(
+            {
+                "preferred_method": analysis_rec["preferred_method"],
+                "reasons": analysis_rec["reasons"],
+                "replicate_quality_score": float(
+                    analysis_rec["replicate_quality_score"]
+                ),
+                "normalization_quality_score": float(
+                    analysis_rec["normalization_quality_score"]
+                ),
+                "replicate_correlation": (
+                    float(analysis_rec["replicate_correlation"])
+                    if not np.isnan(analysis_rec["replicate_correlation"])
+                    else None
+                ),
+                "experimental_design": analysis_rec["experimental_design"],
+            },
+            f,
+            indent=2,
+        )
+    saved_files["analysis_recommendation"] = analysis_rec_file
+
+    # Step 9: Generate summary plots for best normalization
+    print(
+        f"\n[9/9] Generating summary plots (using '{best_method}' normalization)..."  # noqa: E501
+    )
+
+    best_qc = qc_by_norm[best_method]
+
+    # PCA
+    print("  - PCA analysis...")
+    fig_pca, _ = plot_library_pca(
+        best_qc["logcpm"],
+        sample_cols,
+        conditions_dict,
+        color_by="condition",
+        title="Full Library PCA",
+    )
+    for fmt in save_formats:
+        pca_file = output_dir / f"pca_full_library.{fmt}"
+        fig_pca.savefig(pca_file, dpi=300, bbox_inches="tight")
+        saved_files[f"pca_{fmt}"] = pca_file
+    plt.close(fig_pca)
+
+    # Sample correlations
+    print("  - Sample correlation heatmap...")
+    fig_corr = plot_sample_correlations(
+        best_qc["logcpm"], sample_cols, conditions_dict
+    )
+    for fmt in save_formats:
+        corr_file = output_dir / f"sample_correlations.{fmt}"
+        fig_corr.savefig(corr_file, dpi=300, bbox_inches="tight")
+        saved_files[f"correlations_{fmt}"] = corr_file
+    plt.close(fig_corr)
+
+    # Generate summary markdown report
+    print("\n  Writing summary report...")
+    summary_md = _generate_summary_markdown(
+        lib_stats,
+        norm_recommendation,
+        analysis_rec,
+        controls_data,
+        qc_by_norm[best_method],
+        best_method,
+    )
+
+    summary_file = output_dir / "qc_summary.md"
+    with open(summary_file, "w") as f:
+        f.write(summary_md)
+    saved_files["summary_md"] = summary_file
+
+    print("\n" + "=" * 60)
+    print("QC Pipeline Complete!")
+    print(f"Results saved to: {output_dir}")
+    print("=" * 60)
+
+    return {
+        "library_stats": lib_stats,
+        "metadata": metadata_df,
+        "conditions": conditions_dict,
+        "size_factors": size_factors_dict,
+        "qc_by_norm": qc_by_norm,
+        "best_normalization": norm_recommendation,
+        "analysis_recommendation": analysis_rec,
+        "control_qc": controls_data,
+        "files": saved_files,
+    }
+
 
 
 def load_control_sgrnas(control_file: Union[Path, str]) -> set:
@@ -35,31 +447,7 @@ def load_control_sgrnas(control_file: Union[Path, str]) -> set:
         controls = {line.strip() for line in f if line.strip()}
     return controls
 
-
-def parse_condition_replicate(
-    column_name: str, delimiter: str = "_"
-) -> Tuple[str, str]:
-    """
-    Parse condition and replicate from column name.
-
-    Parameters
-    ----------
-    column_name : str
-        Column name like "Total_Rep1" or "Sort1_Rep2".
-    delimiter : str
-        Delimiter between condition and replicate.
-
-    Returns
-    -------
-    tuple
-        (condition, replicate) e.g. ("Total", "Rep1")
-    """
-    parts = column_name.rsplit(delimiter, 1)
-    if len(parts) == 2:
-        return parts[0], parts[1]
-    return column_name, "Rep1"
-
-
+    
 def read_counts(
     count_tsv: Union[Path, str],
     sgrna_col: str = "sgRNA",
@@ -114,6 +502,30 @@ def read_counts(
             raise ValueError(f"Sample column '{col}' contains negative counts")
 
     return count_df, sample_cols
+
+
+def parse_condition_replicate(
+    column_name: str, delimiter: str = "_"
+) -> Tuple[str, str]:
+    """
+    Parse condition and replicate from column name.
+
+    Parameters
+    ----------
+    column_name : str
+        Column name like "Total_Rep1" or "Sort1_Rep2".
+    delimiter : str
+        Delimiter between condition and replicate.
+
+    Returns
+    -------
+    tuple
+        (condition, replicate) e.g. ("Total", "Rep1")
+    """
+    parts = column_name.rsplit(delimiter, 1)
+    if len(parts) == 2:
+        return parts[0], parts[1]
+    return column_name, "Rep1"
 
 
 def parse_metadata_from_columns(
@@ -450,40 +862,40 @@ def compute_size_factors_stable_set(
     return compute_size_factors_median_ratio(stable_counts, sample_cols)
 
 
-def compute_size_factors_control(
-    count_df: DataFrame,
-    sample_cols: List[str],
-    control_ids: Union[set, pd.Index],
-    sgrna_col: str = "sgRNA",
-) -> pd.Series:
-    """
-    Compute size factors using control sgRNAs only.
+# def compute_size_factors_control(
+#     count_df: DataFrame,
+#     sample_cols: List[str],
+#     control_ids: Union[set, pd.Index],
+#     sgrna_col: str = "sgRNA",
+# ) -> pd.Series:
+#     """
+#     Compute size factors using control sgRNAs only.
 
-    Parameters
-    ----------
-    count_df : DataFrame
-        Full count table.
-    sample_cols : list
-        Sample column names.
-    control_ids : set or Index
-        Control sgRNA IDs.
-    sgrna_col : str
-        sgRNA column name.
+#     Parameters
+#     ----------
+#     count_df : DataFrame
+#         Full count table.
+#     sample_cols : list
+#         Sample column names.
+#     control_ids : set or Index
+#         Control sgRNA IDs.
+#     sgrna_col : str
+#         sgRNA column name.
 
-    Returns
-    -------
-    pd.Series
-        Size factors indexed by sample name.
-    """
-    # Subset to control sgRNAs
-    control_mask = count_df[sgrna_col].isin(control_ids)
-    control_counts = count_df[control_mask]
+#     Returns
+#     -------
+#     pd.Series
+#         Size factors indexed by sample name.
+#     """
+#     # Subset to control sgRNAs
+#     control_mask = count_df[sgrna_col].isin(control_ids)
+#     control_counts = count_df[control_mask]
 
-    if len(control_counts) == 0:
-        raise ValueError("No control sgRNAs found in count table")
+#     if len(control_counts) == 0:
+#         raise ValueError("No control sgRNAs found in count table")
 
-    # Apply median-of-ratios on controls
-    return compute_size_factors_median_ratio(control_counts, sample_cols)
+#     # Apply median-of-ratios on controls
+#     return compute_size_factors_median_ratio(control_counts, sample_cols)
 
 
 def apply_size_factors(
@@ -1287,6 +1699,7 @@ def control_sgrna_qc(
     # Calculate metrics per condition
     metrics = {}
     for cond, cols in non_baseline_conditions.items():
+        print("CONDITION", cond)
         cond_delta = delta_df[cols].values.flatten()
         cond_delta = cond_delta[~np.isnan(cond_delta)]
 
@@ -1300,6 +1713,7 @@ def control_sgrna_qc(
             "n_sgrnas": len(control_df),
             "n_values": len(cond_delta),
         }
+        print(metrics[cond])
 
         # Wilcoxon signed-rank test: H0: median = 0
         if len(cond_delta) > 0:
@@ -1343,6 +1757,23 @@ def control_sgrna_qc(
             log_cpm = np.log2(cpm_df[cols] + 1)
             corr_matrix = log_cpm.corr(method="pearson")
             replicate_correlations[cond] = corr_matrix
+    # Check neutrality thresholds
+    reasons = []
+    for cond, metric in metrics.items():
+        if abs(metric["median"]) >= 0.2:
+            reasons.append(f"{cond}: large median shift ({metric['median']:.3f})")
+        if metric["tail_rate_1.0"] >= 0.05:
+            reasons.append(f"{cond}: high tail rate ({metric['tail_rate_1.0']:.3f})")
+
+    # Check replicate consistency
+    rep_corrs = [corr_matrix.values[np.triu_indices_from(corr_matrix.values, k=1)].mean() 
+                for corr_matrix in replicate_correlations.values()]
+    overall_median_corr = np.median(rep_corrs) if rep_corrs else np.nan
+
+    if overall_median_corr < 0.3:
+        reasons.append(f"Low replicate correlation ({overall_median_corr:.3f})")
+
+    controls_good = len(reasons) == 0
 
     return {
         "raw_counts": control_df,
@@ -1355,6 +1786,10 @@ def control_sgrna_qc(
         "pairwise_median": pairwise_median,
         "replicate_correlations": replicate_correlations,
         "sample_cols": sample_cols,
+        # Neutrality check
+        "controls_good": controls_good,
+        "overall_median_corr": overall_median_corr,
+        "reasons": reasons,
     }
 
 
@@ -1439,417 +1874,6 @@ def export_control_counts_and_cpm(
     return {
         "raw_counts": raw_counts_file,
         "cpm": cpm_file,
-    }
-
-
-def generate_standard_qc_report(
-    count_tsv: Union[Path, str],
-    output_dir: Union[Path, str],
-    metadata_tsv: Optional[Union[Path, str]] = None,
-    control_sgrna_txt: Optional[Union[Path, str]] = None,
-    baseline_condition: str = "total",
-    sgrna_col: str = "sgRNA",
-    gene_col: str = "Gene",
-    delimiter: str = "_",
-    norm_methods: Optional[List[str]] = None,
-    pseudocount: float = 1.0,
-    save_formats: Optional[List[str]] = None,
-) -> Dict:
-    """
-    Generate comprehensive standard QC report for CRISPR screens.
-
-    Analyzes full library with multiple normalization methods, compares them,
-    and recommends best normalization and analysis method (RRA vs MLE).
-
-    Parameters
-    ----------
-    count_tsv : Path or str
-        Path to MAGeCK count table TSV.
-    output_dir : Path or str
-        Output directory for all QC files.
-    metadata_tsv : Path or str, optional
-        Path to metadata file with sample/condition/replicate columns.
-        If None, will parse from column names using delimiter.
-    control_sgrna_txt : Path or str, optional
-        Path to control sgRNA file. If provided, will run control neutrality QC
-        and optionally include control-based normalization.
-    baseline_condition : str
-        Name of baseline condition (e.g., "total", "T0").
-    sgrna_col : str
-        sgRNA column name.
-    gene_col : str
-        Gene column name.
-    delimiter : str
-        Delimiter for parsing condition_replicate from column names.
-    norm_methods : list of str, optional
-        Normalization methods to test. Default: ["median", "total",
-        "stable_set"].
-        If controls provided and good: adds "control".
-    pseudocount : float
-        Pseudocount for log transformation.
-    save_formats : list of str, optional
-        Plot formats to save. Default: ["png"].
-
-    Returns
-    -------
-    dict
-        Comprehensive QC results with keys:
-        - library_stats: DataFrame
-        - qc_by_norm: dict mapping norm_method -> QC results
-        - size_factors: dict mapping norm_method -> Series
-        - best_normalization: dict with recommendation
-        - analysis_recommendation: dict with RRA vs MLE recommendation
-        - control_qc: dict (if controls provided)
-        - files: dict mapping output_name -> file path
-    """
-    import matplotlib.pyplot as plt
-    from .plots import (
-        plot_ma_grid,
-        plot_library_pca,
-        plot_sample_correlations,
-    )
-
-    # Setup
-    output_dir = Path(output_dir)
-    output_dir.mkdir(exist_ok=True, parents=True)
-
-    if save_formats is None:
-        save_formats = ["png"]
-
-    if norm_methods is None:
-        norm_methods = ["median", "total", "stable_set"]
-
-    print("=" * 60)
-    print("Standard CRISPR Screen QC Pipeline")
-    print("=" * 60)
-
-    saved_files = {}
-
-    # Step 1: Load data
-    print("\n[1/9] Loading count data...")
-    count_df, sample_cols = read_counts(count_tsv, sgrna_col, gene_col)
-    print(f"  Loaded {len(count_df)} sgRNAs, {len(sample_cols)} samples")
-
-    # Step 2: Parse/load metadata
-    print("\n[2/9] Parsing metadata...")
-    if metadata_tsv is not None:
-        metadata_df = read_metadata(metadata_tsv)
-        # Build conditions dict from metadata
-        conditions_dict = {}
-        for _, row in metadata_df.iterrows():
-            condition = row["condition"]
-            sample = row["sample"]
-            if condition not in conditions_dict:
-                conditions_dict[condition] = []
-            conditions_dict[condition].append(sample)
-    else:
-        conditions_dict, metadata_df = parse_metadata_from_columns(
-            sample_cols, delimiter
-        )
-
-    print(
-        f"  Found {len(conditions_dict)} conditions: {list(conditions_dict.keys())}"  # noqa: E501
-    )
-
-    # Validate baseline
-    if baseline_condition not in conditions_dict:
-        raise ValueError(
-            f"Baseline condition '{baseline_condition}' not found. "
-            f"Available: {list(conditions_dict.keys())}"
-        )
-    baseline_cols = conditions_dict[baseline_condition]
-
-    # Step 3: Library stats
-    print("\n[3/9] Computing library statistics...")
-    lib_stats = compute_library_stats(count_df, sample_cols)
-    lib_stats_file = output_dir / "library_stats.tsv"
-    lib_stats.to_csv(lib_stats_file, sep="\t", index=False)
-    saved_files["library_stats"] = lib_stats_file
-    print(f"  Saved to {lib_stats_file}")
-
-    # Step 4: Load controls if provided
-    controls_data = None
-    if control_sgrna_txt is not None:
-        print("\n[4/9] Loading control sgRNAs and testing neutrality...")
-        control_ids = load_control_sgrnas(control_sgrna_txt)
-        print(f"  Loaded {len(control_ids)} control sgRNAs")
-
-        # Test control neutrality
-        controls_data = qc_controls_neutrality(
-            count_df,
-            sample_cols,
-            control_ids,
-            conditions_dict,
-            baseline_cols,
-            sgrna_col,
-            pseudocount,
-            baseline_condition=baseline_condition,
-        )
-
-        if controls_data["controls_good"]:
-            print("  ✓ Controls are neutral - suitable for normalization")
-            if "control" not in norm_methods:
-                norm_methods.append("control")
-        else:
-            print("  ✗ Controls show systematic biases:")
-            for reason in controls_data["reasons"]:
-                print(f"    - {reason}")
-            print("  → Control-based normalization NOT recommended")
-
-        # Save control QC
-        control_qc_file = output_dir / "control_neutrality_qc.json"
-        with open(control_qc_file, "w") as f:
-            # Convert to JSON-serializable format
-            json_data = {
-                "controls_good": controls_data["controls_good"],
-                "metrics": controls_data["metrics"],
-                "overall_median_corr": (
-                    float(controls_data["overall_median_corr"])
-                    if not np.isnan(controls_data["overall_median_corr"])
-                    else None
-                ),
-                "reasons": controls_data["reasons"],
-            }
-            json.dump(json_data, f, indent=2)
-        saved_files["control_neutrality"] = control_qc_file
-    else:
-        print("\n[4/9] No controls provided - skipping control QC")
-
-    # Step 5: Compute size factors for all methods
-    print(
-        f"\n[5/9] Computing size factors for normalization methods: {norm_methods}"  # noqa: E501
-    )
-    size_factors_dict = {}
-
-    for method in norm_methods:
-        if method == "total":
-            sf = compute_size_factors_total(count_df, sample_cols)
-        elif method == "median":
-            sf = compute_size_factors_median_ratio(count_df, sample_cols)
-        elif method == "stable_set":
-            # First compute logCPM with simple CPM
-            simple_cpm = calculate_cpm(count_df, sample_cols)
-            logcpm_simple = np.log2(simple_cpm[sample_cols] + 1)
-            stable_guides = select_stable_guides(logcpm_simple, sample_cols)
-            print(
-                f"  Selected {len(stable_guides)} stable guides ({len(stable_guides)/len(count_df)*100:.1f}%)"  # noqa: E501
-            )
-            sf = compute_size_factors_stable_set(
-                count_df, sample_cols, stable_guides
-            )
-        elif method == "control":
-            if control_sgrna_txt is None:
-                warnings.warn(f"Skipping '{method}' - no controls provided")
-                continue
-            sf = compute_size_factors_control(
-                count_df, sample_cols, control_ids, sgrna_col
-            )
-        else:
-            warnings.warn(f"Unknown normalization method: {method}")
-            continue
-
-        size_factors_dict[method] = sf
-        print(
-            f"  {method}: median SF = {sf.median():.3f}, range = [{sf.min():.3f}, {sf.max():.3f}]"  # noqa: E501
-        )
-
-    # Save size factors
-    sf_df = pd.DataFrame(size_factors_dict)
-    sf_file = output_dir / "size_factors.tsv"
-    sf_df.to_csv(sf_file, sep="\t")
-    saved_files["size_factors"] = sf_file
-
-    # Compare size factors
-    sf_comparison = compare_size_factors(size_factors_dict)
-    sf_comp_file = output_dir / "size_factors_comparison.tsv"
-    sf_comparison.to_csv(sf_comp_file, sep="\t", index=False)
-    saved_files["size_factors_comparison"] = sf_comp_file
-
-    # Step 6: Run QC for each normalization method
-    print("\n[6/9] Running QC analysis for each normalization method...")
-    qc_by_norm = {}
-
-    for method in size_factors_dict.keys():
-        print(f"  Analyzing '{method}' normalization...")
-
-        # Apply normalization
-        norm_counts = apply_size_factors(
-            count_df, sample_cols, size_factors_dict[method]
-        )
-
-        # Compute CPM on normalized counts
-        norm_cpm = calculate_cpm(norm_counts, sample_cols)
-        logcpm = np.log2(norm_cpm[sample_cols] + pseudocount)
-
-        # Compute delta (non-baseline vs baseline)
-        non_baseline_cols = [c for c in sample_cols if c not in baseline_cols]
-        delta_df = calculate_delta_logfc(
-            norm_cpm, non_baseline_cols, baseline_cols, pseudocount
-        )
-
-        # QC metrics
-        logfc_dist = qc_logfc_distribution(
-            delta_df, conditions_dict, baseline_condition=baseline_condition
-        )
-        rep_consistency = qc_replicate_consistency(
-            delta_df, conditions_dict, baseline_condition=baseline_condition
-        )
-
-        qc_by_norm[method] = {
-            "logfc_dist": logfc_dist,
-            "replicate_consistency": rep_consistency,
-            "logcpm": logcpm,
-            "delta": delta_df,
-        }
-
-        # Save per-method metrics
-        method_dir = output_dir / f"norm_{method}"
-        method_dir.mkdir(exist_ok=True)
-
-        logfc_dist.to_csv(
-            method_dir / "logfc_distribution.tsv", sep="\t", index=False
-        )
-        rep_consistency["summary"].to_csv(
-            method_dir / "replicate_consistency.tsv", sep="\t", index=False
-        )
-
-        # Generate MA plots for this normalization
-        print("    Generating MA plots...")
-        fig_ma, ma_metrics = plot_ma_grid(
-            logcpm, conditions_dict, baseline_cols
-        )
-        for fmt in save_formats:
-            ma_file = method_dir / f"ma_plots.{fmt}"
-            fig_ma.savefig(ma_file, dpi=300, bbox_inches="tight")
-        plt.close(fig_ma)
-
-    # Step 7: Choose best normalization
-    print("\n[7/9] Selecting best normalization method...")
-    norm_recommendation = choose_best_normalization(
-        qc_by_norm, size_factors_dict
-    )
-    best_method = norm_recommendation["best_method"]
-    print(f"  ✓ Recommended: {best_method}")
-    print("  Reasons:")
-    for reason in norm_recommendation["reasons"]:
-        print(f"    - {reason}")
-
-    # Save recommendation
-    norm_rec_file = output_dir / "normalization_recommendation.json"
-    with open(norm_rec_file, "w") as f:
-        json.dump(
-            {
-                "best_method": norm_recommendation["best_method"],
-                "ranking": [
-                    {"method": m, "score": float(s)}
-                    for m, s in norm_recommendation["ranking"]
-                ],
-                "reasons": norm_recommendation["reasons"],
-            },
-            f,
-            indent=2,
-        )
-    saved_files["normalization_recommendation"] = norm_rec_file
-
-    # Step 8: Recommend analysis method (RRA vs MLE)
-    print("\n[8/9] Recommending analysis method (RRA vs MLE)...")
-    analysis_rec = recommend_analysis_method(
-        metadata_df, qc_by_norm[best_method], baseline_condition
-    )
-    print(f"  ✓ Recommended: {analysis_rec['preferred_method']}")
-    print("  Reasons:")
-    for reason in analysis_rec["reasons"]:
-        print(f"    - {reason}")
-
-    # Save recommendation
-    analysis_rec_file = output_dir / "analysis_recommendation.json"
-    with open(analysis_rec_file, "w") as f:
-        json.dump(
-            {
-                "preferred_method": analysis_rec["preferred_method"],
-                "reasons": analysis_rec["reasons"],
-                "replicate_quality_score": float(
-                    analysis_rec["replicate_quality_score"]
-                ),
-                "normalization_quality_score": float(
-                    analysis_rec["normalization_quality_score"]
-                ),
-                "replicate_correlation": (
-                    float(analysis_rec["replicate_correlation"])
-                    if not np.isnan(analysis_rec["replicate_correlation"])
-                    else None
-                ),
-                "experimental_design": analysis_rec["experimental_design"],
-            },
-            f,
-            indent=2,
-        )
-    saved_files["analysis_recommendation"] = analysis_rec_file
-
-    # Step 9: Generate summary plots for best normalization
-    print(
-        f"\n[9/9] Generating summary plots (using '{best_method}' normalization)..."  # noqa: E501
-    )
-
-    best_qc = qc_by_norm[best_method]
-
-    # PCA
-    print("  - PCA analysis...")
-    fig_pca, _ = plot_library_pca(
-        best_qc["logcpm"],
-        sample_cols,
-        conditions_dict,
-        color_by="condition",
-        title="Full Library PCA",
-    )
-    for fmt in save_formats:
-        pca_file = output_dir / f"pca_full_library.{fmt}"
-        fig_pca.savefig(pca_file, dpi=300, bbox_inches="tight")
-        saved_files[f"pca_{fmt}"] = pca_file
-    plt.close(fig_pca)
-
-    # Sample correlations
-    print("  - Sample correlation heatmap...")
-    fig_corr = plot_sample_correlations(
-        best_qc["logcpm"], sample_cols, conditions_dict
-    )
-    for fmt in save_formats:
-        corr_file = output_dir / f"sample_correlations.{fmt}"
-        fig_corr.savefig(corr_file, dpi=300, bbox_inches="tight")
-        saved_files[f"correlations_{fmt}"] = corr_file
-    plt.close(fig_corr)
-
-    # Generate summary markdown report
-    print("\n  Writing summary report...")
-    summary_md = _generate_summary_markdown(
-        lib_stats,
-        norm_recommendation,
-        analysis_rec,
-        controls_data,
-        qc_by_norm[best_method],
-        best_method,
-    )
-
-    summary_file = output_dir / "qc_summary.md"
-    with open(summary_file, "w") as f:
-        f.write(summary_md)
-    saved_files["summary_md"] = summary_file
-
-    print("\n" + "=" * 60)
-    print("QC Pipeline Complete!")
-    print(f"Results saved to: {output_dir}")
-    print("=" * 60)
-
-    return {
-        "library_stats": lib_stats,
-        "metadata": metadata_df,
-        "conditions": conditions_dict,
-        "size_factors": size_factors_dict,
-        "qc_by_norm": qc_by_norm,
-        "best_normalization": norm_recommendation,
-        "analysis_recommendation": analysis_rec,
-        "control_qc": controls_data,
-        "files": saved_files,
     }
 
 

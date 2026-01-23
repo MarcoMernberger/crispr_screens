@@ -32,9 +32,9 @@ from .jobs.qc_jobs import (
     control_qc_job,
     standard_qc_job,
     mageck_report_job,
-    comprehensive_qc_job,
+    # comprehensive_qc_job,
 )
-from .models import ReportConfig, ResultReport, QCConfig, QCReport
+# from .models import ReportConfig, ResultReport, QCConfig, QCReport
 
 __all__ = [
     "combine_comparison_output_job",
