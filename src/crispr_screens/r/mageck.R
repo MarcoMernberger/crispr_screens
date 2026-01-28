@@ -285,10 +285,21 @@ RunMageckScatterView <- function(
     }
     selection_idx <- diag_keep & group_keep & sig_keep
     # diese Gene werden gelabelt
-    top_labels=NULL
-    if (toplabels){
-        top_labels <- df_norm[[gene_col]][selection_idx]
+    top_labels <- NULL
+    # toplabels kann ein logischer Skalar (TRUE/FALSE) oder ein character-Vektor sein.
+    if (is.logical(toplabels) && length(toplabels) == 1) {
+        if (!is.na(toplabels) && toplabels) {
+            top_labels <- as.character(df_norm[[gene_col]][selection_idx])
+        } else {
+            top_labels <- NULL
+        }
+    } else if (is.character(toplabels)) {
+        top_labels <- toplabels
+    } else {
+        print(toplabels)
+        stop("'toplabels' musst be a length-1 logical or a character vector.")
     }
+        
     # ScatterView
     plot_df <- df_norm
     plot_df$X_tmp <- df_norm[[x_col]]

@@ -2,6 +2,7 @@ from pypipegraph2 import (
     Job,
     FileGeneratingJob,
     MultiFileGeneratingJob,
+    FunctionInvariant,
     ParameterInvariant,
 )
 from pathlib import Path
@@ -10,10 +11,17 @@ from crispr_screens.services.mageck_io import (
     write_filtered_mageck_comparison,
     combine_comparison_output,
     create_query_control_sgrna_frames,
-    create_combine_gene_info_with_mageck_output
+    create_combine_gene_info_with_mageck_output,
+    write_spiked_count_table,
+)
+from crispr_screens.services.spike_evaluation import (
+    evaluate_multiple_mageck_results,
+    rank_mageck_methods,
 )
 from crispr_screens.r_integration.mageck_wrapper import run_mageck_scatterview
 from crispr_screens.core.mageck import mageck_count, mageck_test, mageck_mle
+from pandas import DataFrame
+import numpy as np
 
 
 def combine_comparison_output_job(
@@ -361,15 +369,23 @@ def create_query_control_sgrna_frames_job(
 
 
 def create_combine_gene_info_with_mageck_output_job(
-        mageck_file: Path,
-        gene_info_file: Path,
-        output_file: Path,
-        name_column_mageck: str = "id", 
-        name_column_genes: str = "Gene", 
-        how: str = "inner",
-        columns_to_add: List[str] = ["gene_stable_id", "name", "chr", "start", "stop", "strand", "biotype"],
-        read_csv_kwargs: Optional[Dict] = None,
-        dependencies: List[Job] = [],
+    mageck_file: Path,
+    gene_info_file: Path,
+    output_file: Path,
+    name_column_mageck: str = "id",
+    name_column_genes: str = "Gene",
+    how: str = "inner",
+    columns_to_add: List[str] = [
+        "gene_stable_id",
+        "name",
+        "chr",
+        "start",
+        "stop",
+        "strand",
+        "biotype",
+    ],
+    read_csv_kwargs: Optional[Dict] = None,
+    dependencies: List[Job] = [],
 ):
     def __dump(
         output_file,
@@ -389,6 +405,269 @@ def create_combine_gene_info_with_mageck_output_job(
             name_column_genes=name_column_genes,
             how=how,
             columns_to_add=columns_to_add,
-            read_csv_kwargs=read_csv_kwargs,        
+            read_csv_kwargs=read_csv_kwargs,
         )
+
     return FileGeneratingJob(output_file, __dump).depends_on(dependencies)
+
+
+def create_spiked_count_table_job(
+    outfile: Union[Path, str],
+    count_file: Union[Path, str],
+    replicate_of: Dict[str, str],
+    sample_to_group: Dict[str, str],
+    group_contrast: Tuple[str] = ("sorted", "total"),
+    n_genes: int = 20,
+    log_effect: float = 2.0,
+    baseline_mean: float = 300.0,
+    dispersion: float = 0.08,
+    dependencies: List[Job] = [],
+) -> DataFrame:
+
+    def __dump(
+        outfile,
+        count_file=count_file,
+        replicate_of=replicate_of,
+        sample_to_group=sample_to_group,
+        group_contrast=group_contrast,
+        n_genes=n_genes,
+        log_effect=log_effect,
+        baseline_mean=baseline_mean,
+        dispersion=dispersion,
+    ):
+        write_spiked_count_table(
+            outfile=outfile,
+            count_file=count_file,
+            replicate_of=replicate_of,
+            sample_to_group=sample_to_group,
+            group_contrast=group_contrast,
+            n_genes=n_genes,
+            log_effect=log_effect,
+            baseline_mean=baseline_mean,
+            dispersion=dispersion,
+        )
+
+    return FileGeneratingJob(outfile, __dump).depends_on(dependencies)
+
+
+def evaluate_spike_in_performance_job(
+    output_file: Union[Path, str],
+    mageck_results: Dict[str, Path],
+    # direction: str = "neg",
+    combine_directions: bool = True,
+    fdr_threshold: float = 0.05,
+    lfc_threshold: float = 1.0,
+    gene_col: str = "id",
+    weights: Optional[Dict[str, float]] = None,
+    dependencies: List[Job] = [],
+) -> Job:
+    """
+    Evaluate and compare multiple MAGeCK runs with spike-in controls.
+
+    This job calculates comprehensive quality metrics for spike-in detection:
+    - Precision, Recall, F1 score
+    - AUC-ROC and AUC-PR
+    - Separation metrics (Cohen's d, effect sizes)
+    - Ranking power (AUCC, top-k enrichment)
+    - Consistency (CV, IQR within spike-in groups)
+
+    Parameters
+    ----------
+    output_file : Union[Path, str]
+        Output TSV file with evaluation metrics
+    mageck_results : Dict[str, Path]
+        Dictionary mapping comparison names to gene_summary.tsv files
+    direction : str
+        "neg" for negative selection, "pos" for positive selection
+    combine_directions : bool
+        If True, add aggregated "both" rows combining pos and neg per comparison
+    fdr_threshold : float
+        FDR threshold for significance calling
+    lfc_threshold : float
+        Absolute log fold change threshold
+    gene_col : str
+        Column name for gene IDs (default: "id")
+    weights : Optional[Dict[str, float]]
+        Weights for composite score calculation (default: None = equal weights)
+    dependencies : List[Job]
+        Job dependencies
+
+    Returns
+    -------
+    Job
+        FileGeneratingJob that creates the evaluation report
+
+    Examples
+    --------
+    >>> eval_job = evaluate_spike_in_performance_job(
+    ...     output_file="results/spike_evaluation.tsv",
+    ...     mageck_results={
+    ...         "RRA_paired_median": Path("results/.../gene_summary.tsv"),
+    ...         "RRA_paired_control": Path("results/.../gene_summary.tsv"),
+    ...         "RRA_unpaired_median": Path("results/.../gene_summary.tsv"),
+    ...     },
+    ...     direction="neg",
+    ...     dependencies=[rra1, rra2, rra3],
+    ... )
+    """
+
+    def __dump(
+        output_file,
+        mageck_results=mageck_results,
+        # direction=direction,
+        combine_directions=combine_directions,
+        fdr_threshold=fdr_threshold,
+        lfc_threshold=lfc_threshold,
+        gene_col=gene_col,
+        weights=weights,
+    ):
+        # Evaluate all methods
+        eval_df = evaluate_multiple_mageck_results(
+            results_dict=mageck_results,
+            # direction=direction,
+            combine_directions=combine_directions,
+            fdr_threshold=fdr_threshold,
+            lfc_threshold=lfc_threshold,
+            gene_col=gene_col,
+        )
+        if len(eval_df) == 0:
+            raise ValueError("No valid MAGeCK results found for evaluation")
+
+        # Rank methods
+        ranked_df = rank_mageck_methods(eval_df, weights=weights)
+
+        # Save to file
+        ranked_df.to_csv(output_file, sep="\t", index=False)
+
+        # Print summary to stdout
+        print("\n" + "=" * 80)
+        print("SPIKE-IN EVALUATION SUMMARY")
+        print("=" * 80)
+        print(f"FDR threshold: {fdr_threshold}")
+        print(f"LFC threshold: {lfc_threshold}")
+        print(f"\nNumber of methods evaluated: {len(ranked_df)}")
+        # print(f"\nDirection: {direction} selection")
+
+        print("\n" + "-" * 80)
+        print("TOP 3 METHODS (by composite score):")
+        print("-" * 80)
+
+        for idx, row in ranked_df.head(3).iterrows():
+            print(f"\n{int(row['rank'])}. {row['comparison']}")
+            print(
+                f"   Composite Score: {row.get('composite_score', np.nan):.3f}"
+            )
+            print(
+                f"   F1: {row.get('f1', np.nan):.3f} | "
+                f"Precision: {row.get('precision', np.nan):.3f} | "
+                f"Recall: {row.get('recall', np.nan):.3f}"
+            )
+            print(
+                f"   AUC-ROC: {row.get('auc_roc', np.nan):.3f} | "
+                f"AUCC: {row.get('aucc', np.nan):.3f}"
+            )
+            print(f"   Median Rank: {row.get('median_rank', np.nan):.1f}")
+
+            # Detection stats
+            n_detected = row.get("n_detected_hits", 0)
+            n_expected = row.get("n_expected_hits", 0)
+            print(
+                f"   Detected: {int(n_detected)}/{int(n_expected)} expected hits"
+            )
+
+            # Separation
+            cohens_d = row.get(
+                "neg_vs_neutral_cohens_d",
+                row.get("pos_vs_neutral_cohens_d", np.nan),
+            )
+            print(f"   Separation (Cohen's d): {cohens_d:.2f}")
+
+        print("\n" + "=" * 80)
+        print(f"Full results saved to: {output_file}")
+        print("=" * 80 + "\n")
+
+    return FileGeneratingJob(output_file, __dump).depends_on(dependencies)
+
+
+def spike_evaluation_report_job(
+    output_dir: Union[Path, str],
+    evaluation_table: Union[Path, str],
+    prefix: str = "spike_evaluation",
+    top_n: int = 5,
+    pdf_report: bool = True,
+    dependencies: List[Job] = [],
+) -> MultiFileGeneratingJob:
+    """Job that creates a markdown (and optional PDF) report interpreting
+    the spike-in evaluation table created by `evaluate_spike_in_performance_job`.
+
+    Parameters
+    ----------
+    output_dir : Union[Path, str]
+        Directory to save report outputs
+    evaluation_table : Union[Path, str]
+        Path to TSV produced by `evaluate_spike_in_performance_job`
+    prefix : str
+        Prefix for output files (default: 'spike_evaluation')
+    top_n : int
+        Number of top methods to show in the report
+    pdf_report : bool
+        Whether to attempt generating a PDF
+    dependencies : List[Job]
+        Job dependencies
+
+    Returns
+    -------
+    MultiFileGeneratingJob
+    """
+    outfiles = [
+        Path(output_dir) / f"{prefix}.md",
+        Path(output_dir) / f"{prefix}_scores.png",
+    ]
+    if pdf_report:
+        outfiles.append(Path(output_dir) / f"{prefix}.pdf")
+
+    def __dump(
+        outfiles,
+        output_dir=output_dir,
+        evaluation_table=evaluation_table,
+        prefix=prefix,
+        top_n=top_n,
+        pdf_report=pdf_report,
+    ):
+        from crispr_screens.services.io import generate_spike_evaluation_report
+
+        generate_spike_evaluation_report(
+            eval_table=evaluation_table,
+            output_dir=output_dir,
+            prefix=prefix,
+            top_n=top_n,
+            pdf_report=pdf_report,
+        )
+
+    job = MultiFileGeneratingJob(outfiles, __dump).depends_on(dependencies)
+
+    # Add invariants
+    from crispr_screens.services.io import (
+        generate_spike_evaluation_report as _gen,
+    )
+
+    job.depends_on(
+        FunctionInvariant(
+            f"{prefix}_generate_spike_evaluation_report",
+            _gen,
+        )
+    )
+
+    job.depends_on(
+        ParameterInvariant(
+            f"{prefix}_spike_params",
+            (
+                str(evaluation_table),
+                prefix,
+                top_n,
+                pdf_report,
+            ),
+        )
+    )
+
+    return job

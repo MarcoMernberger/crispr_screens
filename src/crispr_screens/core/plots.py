@@ -140,7 +140,8 @@ def plot_selected_venn(
 def volcano_plot(
     df: pd.DataFrame,
     log_fc_column: str,
-    fdr_column: Union[str, Tuple[str, str]],
+    y_column: Union[str, Tuple[str, str]],
+    fdr_column: Optional[Union[str, Tuple[str, str]]] = None,
     *,
     name_column: Optional[str] = None,
     top_n_labels: int = 0,
@@ -159,8 +160,8 @@ def volcano_plot(
 ) -> Tuple[plt.Figure, plt.Axes]:
     """
     Volcano plot supporting either:
-      - a single FDR column (MLE-style), or
-      - separate FDR columns for positive/negative effects (RRA-style).
+      - a single p or FDR column (MLE-style), or
+      - separate p or FDR columns for positive/negative effects (RRA-style).
 
     If fdr_column is a tuple:
         (fdr_pos, fdr_neg)
@@ -174,6 +175,8 @@ def volcano_plot(
         Data with logFC and FDR columns.
     log_fc_column : str
         Column name for log fold-change.
+    y_column : str
+        Y column name, may be p-value or fdr (fdr_pos, fdr_neg) for RRA-style.
     fdr_column : str or tuple
         FDR column name, or (fdr_pos, fdr_neg) for RRA-style.
     name_column : str, optional
@@ -211,7 +214,9 @@ def volcano_plot(
     fig : matplotlib.figure.Figure
     ax : matplotlib.axes.Axes
     """
-
+    if fdr_column is None:
+        fdr_column = y_column
+    print(y_column, fdr_column)
     if log_fc_column not in df.columns:
         raise KeyError(f"Missing column: {log_fc_column}")
 
@@ -228,18 +233,33 @@ def volcano_plot(
         fdr_pos_col = fdr_column
         fdr_neg_col = None
 
-    cols = [log_fc_column, fdr_pos_col]
+    if isinstance(y_column, tuple):
+        if len(y_column) != 2:
+            raise ValueError("y_column tuple must be size 2")
+        y_pos_col, y_neg_col = fdr_column
+        for col in (y_pos_col, y_neg_col):
+            if col not in df.columns:
+                raise KeyError(f"Missing column: {col}")
+    else:
+        if y_column not in df.columns:
+            raise KeyError(f"Missing column: {y_column}")
+        y_pos_col = y_column
+        y_neg_col = None
+    cols = [log_fc_column, fdr_pos_col, y_pos_col]
     if fdr_neg_col is not None:
         cols.append(fdr_neg_col)
+    if y_neg_col is not None:
+        cols.append(y_neg_col)
     if name_column:
         cols.append(name_column)
 
-    data = df[cols].copy()
+    data = df[list(set(cols))].copy()
 
     # Ensure numeric
     data[log_fc_column] = pd.to_numeric(data[log_fc_column], errors="coerce")
-    for col in [fdr_pos_col, fdr_neg_col]:
+    for col in [fdr_pos_col, fdr_neg_col, y_pos_col, y_neg_col]:
         if col is not None:
+            print(col)
             data[col] = pd.to_numeric(data[col], errors="coerce")
 
     data = data.dropna(subset=[log_fc_column])
@@ -252,18 +272,24 @@ def volcano_plot(
             data[fdr_pos_col].to_numpy(),
             data[fdr_neg_col].to_numpy(),
         )
+        y_raw = np.where(
+            x >= 0,
+            data[y_pos_col].to_numpy(),
+            data[y_neg_col].to_numpy(),
+        )
     else:
         fdr_raw = data[fdr_pos_col].to_numpy()
+        y_raw = data[y_pos_col].to_numpy()
 
-    fdr_raw = np.clip(fdr_raw, y_clip_min, 1.0)
+    y_raw = np.clip(fdr_raw, y_clip_min, 1.0)
 
     if transform_y:
-        y = -np.log10(fdr_raw)
-        y_thr_plot = -np.log10(max(fdr_threshold, y_clip_min))
+        y = -np.log10(y_raw)
+        fdr_thr_plot = -np.log10(max(fdr_threshold, y_clip_min))
         y_label = ylabel or r"$-\log_{10}(\mathrm{FDR})$"
     else:
-        y = fdr_raw
-        y_thr_plot = fdr_threshold
+        y = y_raw
+        fdr_thr_plot = fdr_threshold
         y_label = ylabel or "FDR"
 
     # Significance logic (RAW FDR scale)
@@ -361,7 +387,7 @@ def volcano_plot(
     # Threshold lines
     ax.axvline(+log_threshold, linestyle="--", linewidth=1, color="grey")
     ax.axvline(-log_threshold, linestyle="--", linewidth=1, color="grey")
-    ax.axhline(y_thr_plot, linestyle="--", linewidth=1, color="grey")
+    ax.axhline(fdr_thr_plot, linestyle="--", linewidth=1, color="grey")
 
     ax.set_xlabel(xlabel or log_fc_column)
     ax.set_ylabel(y_label)

@@ -34,7 +34,8 @@ def write_volcano_plot(
     folder: Union[Path, str],
     df: Union[Path, str, DataFrame],
     log_fc_column: str,
-    fdr_column: str,
+    y_column: Union[str, Tuple[str, str]],
+    fdr_column: Optional[Union[str, Tuple[str, str]]] = None,
     name_column: Optional[str] = None,
     top_n_labels: int = 0,
     transform_y: bool = True,  # True -> plot -log10(FDR), False -> plot raw FDR
@@ -47,7 +48,9 @@ def write_volcano_plot(
     ylabel: Optional[str] = None,
     figsize: Tuple[float, float] = (8, 6),
     y_clip_min: float = 1e-300,  # avoids -log10(0)
-    y_clip_max: Optional[float] = None,  # clips extreme y-values, shows as triangles
+    y_clip_max: Optional[
+        float
+    ] = None,  # clips extreme y-values, shows as triangles
     label_fontsize: int = 9,
 ):
     if isinstance(df, str) or isinstance(df, Path):
@@ -59,6 +62,7 @@ def write_volcano_plot(
     fig, axes = volcano_plot(
         df=df,
         log_fc_column=log_fc_column,
+        y_column=y_column,
         fdr_column=fdr_column,
         name_column=name_column,
         top_n_labels=top_n_labels,

@@ -2,7 +2,6 @@
 PyPipeGraph2 job wrappers for CRISPR screen quality control.
 """
 
-from importlib import util as _import_util
 from pypipegraph2 import (
     Job,
     MultiFileGeneratingJob,
@@ -10,7 +9,7 @@ from pypipegraph2 import (
     ParameterInvariant,
 )
 from pathlib import Path
-from typing import List, Union
+from typing import List, Union, Optional
 from crispr_screens.services.io import (
     generate_control_qc_report,
     standard_qc_report,
@@ -749,6 +748,123 @@ def mageck_report_job(
     return job
 
 
+def pairing_qc_job(
+    count_table: Union[Path, str],
+    treatment_ids: List[str],
+    control_ids: List[str],
+    output_dir: Union[Path, str],
+    control_sgrnas: Optional[Union[Path, str]] = None,
+    positive_control_genes: Optional[Union[Path, str, List[str]]] = None,
+    norm_method: str = "median",
+    sgrna_col: str = "sgRNA",
+    gene_col: str = "Gene",
+    delimiter: str = "_",
+    dependencies: List[Job] = [],
+) -> MultiFileGeneratingJob:
+    """
+    PyPipeGraph job for paired vs. unpaired RRA analysis QC.
+
+    Parameters
+    ----------
+    count_table : Path or str
+        Path to MAGeCK count table
+    treatment_ids : list
+        Treatment sample column names
+    control_ids : list
+        Control sample column names
+    output_dir : Path or str
+        Output directory
+    control_sgrnas : Path or str, optional
+        Control sgRNA file for MAGeCK
+    positive_control_genes : Path, str, or list, optional
+        Positive control genes
+    norm_method : str
+        MAGeCK normalization method
+    sgrna_col : str
+        sgRNA column name
+    gene_col : str
+        Gene column name
+    delimiter : str
+        Delimiter for condition_replicate parsing
+    dependencies : list
+        PyPipeGraph jobs to depend on
+
+    Returns
+    -------
+    MultiFileGeneratingJob
+        Job generating QC report files
+    """
+    from crispr_screens.core.pairing_qc import comprehensive_pairing_qc
+
+    output_dir = Path(output_dir)
+
+    outfiles = [
+        output_dir / "pairing_recommendation.json",
+        output_dir / "pairing_qc_report.md",
+        output_dir / "replicate_rank_correlations.tsv",
+        output_dir / "replicate_top100_overlaps.tsv",
+        output_dir / "paired_gene_summary.tsv",
+        output_dir / "unpaired_gene_summary.tsv",
+        output_dir / "downsampling_stability.tsv",
+    ]
+
+    def __dump(
+        outfiles,
+        count_table=count_table,
+        treatment_ids=treatment_ids,
+        control_ids=control_ids,
+        output_dir=output_dir,
+        control_sgrnas=control_sgrnas,
+        positive_control_genes=positive_control_genes,
+        norm_method=norm_method,
+        sgrna_col=sgrna_col,
+        gene_col=gene_col,
+        delimiter=delimiter,
+    ):
+        comprehensive_pairing_qc(
+            count_table=count_table,
+            treatment_ids=treatment_ids,
+            control_ids=control_ids,
+            output_dir=output_dir,
+            control_sgrnas=control_sgrnas,
+            positive_control_genes=positive_control_genes,
+            norm_method=norm_method,
+            sgrna_col=sgrna_col,
+            gene_col=gene_col,
+            delimiter=delimiter,
+        )
+
+    job = MultiFileGeneratingJob(outfiles, __dump).depends_on(*dependencies)
+
+    # Add function invariants
+    from crispr_screens.core.pairing_qc import (
+        replicate_gene_ranking_consistency,
+        run_paired_unpaired_comparison,
+        downsampling_stability_qc,
+    )
+
+    job.depends_on(
+        FunctionInvariant(
+            "pairing_qc.replicate_consistency",
+            replicate_gene_ranking_consistency,
+        )
+    )
+    job.depends_on(
+        FunctionInvariant(
+            "pairing_qc.paired_vs_unpaired",
+            run_paired_unpaired_comparison,
+        )
+    )
+    job.depends_on(
+        FunctionInvariant(
+            "pairing_qc.downsampling",
+            downsampling_stability_qc,
+        )
+    )
+
+    return job
+
+
 # def comprehensive_qc_job(
 #     count_table: Union[Path, str],
 #     baseline_condition: str,
@@ -939,3 +1055,169 @@ def mageck_report_job(
 #     )
 
 #     return job
+
+
+def pairing_qc_plots_job(
+    qc_output_dir: Union[Path, str],
+    plots_output_dir: Union[Path, str],
+    positive_control_genes: Optional[Union[Path, str, List[str]]] = None,
+    dependencies: List[Job] = [],
+) -> MultiFileGeneratingJob:
+    """
+    PyPipeGraph job to generate all pairing QC plots.
+
+    Parameters
+    ----------
+    qc_output_dir : Path or str
+        Directory with pairing QC results (from pairing_qc_job)
+    plots_output_dir : Path or str
+        Output directory for plots
+    positive_control_genes : Path, str, or list, optional
+        Positive control genes for rank plot
+    dependencies : list
+        PyPipeGraph jobs to depend on
+
+    Returns
+    -------
+    MultiFileGeneratingJob
+        Job generating plot files
+    """
+    from crispr_screens.services.io import (
+        write_replicate_correlation_heatmap,
+        write_top_n_overlap_heatmap,
+        write_paired_vs_unpaired_scatter,
+        write_downsampling_stability_plot,
+        write_positive_control_ranks_plot,
+        write_pairing_decision_summary_plot,
+    )
+
+    qc_output_dir = Path(qc_output_dir)
+    plots_output_dir = Path(plots_output_dir)
+
+    outfiles = [
+        plots_output_dir / "replicate_correlations.png",
+        plots_output_dir / "replicate_correlations.pdf",
+        plots_output_dir / "replicate_top100_overlaps.png",
+        plots_output_dir / "replicate_top100_overlaps.pdf",
+        plots_output_dir / "paired_vs_unpaired_scatter.png",
+        plots_output_dir / "paired_vs_unpaired_scatter.pdf",
+        plots_output_dir / "downsampling_stability.png",
+        plots_output_dir / "downsampling_stability.pdf",
+        plots_output_dir / "pairing_decision_summary.png",
+        plots_output_dir / "pairing_decision_summary.pdf",
+    ]
+
+    if positive_control_genes is not None:
+        outfiles.extend(
+            [
+                plots_output_dir / "positive_control_ranks.png",
+                plots_output_dir / "positive_control_ranks.pdf",
+            ]
+        )
+
+    def __dump(
+        outfiles,
+        qc_output_dir=qc_output_dir,
+        plots_output_dir=plots_output_dir,
+        positive_control_genes=positive_control_genes,
+    ):
+        plots_output_dir.mkdir(exist_ok=True, parents=True)
+
+        # 1. Replicate correlations
+        write_replicate_correlation_heatmap(
+            filename="replicate_correlations",
+            folder=plots_output_dir,
+            correlation_matrix=qc_output_dir
+            / "replicate_rank_correlations.tsv",
+            title="Replicate Gene Rank Correlations",
+        )
+
+        # 2. Top-100 overlaps
+        write_top_n_overlap_heatmap(
+            filename="replicate_top100_overlaps",
+            folder=plots_output_dir,
+            overlap_matrix=qc_output_dir / "replicate_top100_overlaps.tsv",
+            title="Top-100 Gene Overlap Between Replicates",
+        )
+
+        # 3. Paired vs unpaired scatter
+        write_paired_vs_unpaired_scatter(
+            filename="paired_vs_unpaired_scatter",
+            folder=plots_output_dir,
+            paired_results=qc_output_dir / "paired_gene_summary.tsv",
+            unpaired_results=qc_output_dir / "unpaired_gene_summary.tsv",
+            metric="neg|rank",
+            title="Paired vs. Unpaired Gene Rankings",
+        )
+
+        # 4. Downsampling stability
+        write_downsampling_stability_plot(
+            filename="downsampling_stability",
+            folder=plots_output_dir,
+            stability_df=qc_output_dir / "downsampling_stability.tsv",
+            title="Top-100 Gene Stability Under Downsampling",
+        )
+
+        # 5. Pairing decision summary
+        write_pairing_decision_summary_plot(
+            filename="pairing_decision_summary",
+            folder=plots_output_dir,
+            recommendation_dict=qc_output_dir / "pairing_recommendation.json",
+            title="Pairing Decision: Score Components",
+        )
+
+        # 6. Positive control ranks (if provided)
+        if positive_control_genes is not None:
+            # Use unpaired results for this plot (arbitrary choice)
+            write_positive_control_ranks_plot(
+                filename="positive_control_ranks",
+                folder=plots_output_dir,
+                gene_summary=qc_output_dir / "unpaired_gene_summary.tsv",
+                positive_controls=positive_control_genes,
+                rank_col="neg|rank",
+                title="Gene Rank Distribution with Positive Controls",
+            )
+
+    job = MultiFileGeneratingJob(outfiles, __dump).depends_on(*dependencies)
+
+    # Add function invariants
+    from crispr_screens.core.qc_plots import (
+        plot_replicate_correlation_heatmap,
+        plot_top_n_overlap_heatmap,
+        plot_paired_vs_unpaired_scatter,
+        plot_downsampling_stability,
+        plot_pairing_decision_summary,
+    )
+
+    job.depends_on(
+        FunctionInvariant(
+            "qc_plots.replicate_correlation",
+            plot_replicate_correlation_heatmap,
+        )
+    )
+    job.depends_on(
+        FunctionInvariant(
+            "qc_plots.top_n_overlap",
+            plot_top_n_overlap_heatmap,
+        )
+    )
+    job.depends_on(
+        FunctionInvariant(
+            "qc_plots.paired_vs_unpaired",
+            plot_paired_vs_unpaired_scatter,
+        )
+    )
+    job.depends_on(
+        FunctionInvariant(
+            "qc_plots.downsampling",
+            plot_downsampling_stability,
+        )
+    )
+    job.depends_on(
+        FunctionInvariant(
+            "qc_plots.decision_summary",
+            plot_pairing_decision_summary,
+        )
+    )
+
+    return job

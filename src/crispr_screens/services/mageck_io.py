@@ -1,12 +1,13 @@
-import pandas as pd
+import pandas as pd  # type: ignore
 from typing import Dict, Optional, Union, List, Tuple, Callable
 from pathlib import Path
 from crispr_screens.core.mageck import (
     filter_multiple_mageck_comparisons,
     combine_comparisons,
     split_frame_to_control_and_query,
-    combine_gene_info_with_mageck_output
+    combine_gene_info_with_mageck_output,
 )
+from crispr_screens.core.mageck_spikein import create_spiked_count_table
 
 
 def write_filtered_mageck_comparison(
@@ -80,10 +81,20 @@ def create_combine_gene_info_with_mageck_output(
     mageck_file: Path,
     gene_info_file: Path,
     output_file: Path,
-    name_column_mageck: str = "id", 
-    name_column_genes: str = "name_given", 
+    name_column_mageck: str = "id",
+    name_column_genes: str = "name_given",
     how: str = "inner",
-    columns_to_add: List[str] = ["gene_stable_id", "name", "chr", "start", "stop", "strand", "tss", "tes", "biotype"],
+    columns_to_add: List[str] = [
+        "gene_stable_id",
+        "name",
+        "chr",
+        "start",
+        "stop",
+        "strand",
+        "tss",
+        "tes",
+        "biotype",
+    ],
     read_csv_kwargs: Optional[Dict] = None,
 ):
     output_file.parent.mkdir(parents=True, exist_ok=True)
@@ -99,3 +110,31 @@ def create_combine_gene_info_with_mageck_output(
         columns_to_add=columns_to_add,
     )
     combined_df.to_csv(output_file, sep="\t", index=False)
+
+
+def write_spiked_count_table(
+    outfile: Union[Path, str],
+    count_file: Union[str, Path],
+    replicate_of: Dict[str, str],
+    sample_to_group: Dict[str, str],
+    group_contrast: Tuple[str] = ("sorted", "total"),
+    n_genes: int = 20,
+    log_effect: float = 2.0,
+    baseline_mean: float = 300.0,
+    dispersion: float = 0.08,
+):
+    outfile.parent.mkdir(parents=True, exist_ok=True)
+    count_df = pd.read_csv(count_file, sep="\t")
+    sample_cols = [c for c in count_df.columns if (c not in ("sgRNA", "Gene"))]
+    count_spike = create_spiked_count_table(
+        count_df,
+        replicate_of=replicate_of,
+        sample_to_group=sample_to_group,
+        sample_cols=sample_cols,
+        group_contrast=group_contrast,
+        n_genes=n_genes,
+        log_effect=log_effect,
+        baseline_mean=baseline_mean,
+        dispersion=dispersion,
+    )
+    count_spike.to_csv(outfile, sep="\t", index=False)

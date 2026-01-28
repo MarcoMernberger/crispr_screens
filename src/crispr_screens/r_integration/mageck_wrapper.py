@@ -3,7 +3,7 @@ import rpy2.robjects as ro
 from rpy2.robjects.vectors import StrVector, FloatVector
 from rpy2.rinterface import NULL
 from pathlib import Path
-from typing import Tuple, Optional, Union, Literal
+from typing import Tuple, Optional, Union, Literal, Iterable
 
 
 # path to the mageck R functions
@@ -87,6 +87,8 @@ def run_mageck_scatterview(
     r_ylab = ylab if ylab is not None else NULL
     input_file = str(input_file)
     output_dir = str(output_dir)
+    if isinstance(toplabels, Iterable):
+        toplabels = StrVector(toplabels)
 
     res = RunMageckScatterView_R(
         input_file=input_file,

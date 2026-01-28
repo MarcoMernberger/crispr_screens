@@ -1,10 +1,10 @@
-import pandas as pd
+import pandas as pd  # type: ignore
 import re
 import shutil
 import subprocess
 import rpy2.robjects as ro
 from typing import Dict, Optional, Union, List, Callable
-from pandas import DataFrame
+from pandas import DataFrame  # type: ignore
 from pathlib import Path
 
 
@@ -245,7 +245,7 @@ def mageck_test(
 
     command_parameters = [
         "-k",
-        count_table,
+        str(count_table),
         "-t",
         ",".join(treatment_ids),
         "-c",
@@ -505,9 +505,21 @@ def mageck_plot(
 
 
 def combine_gene_info_with_mageck_output(
-    df_mageck: DataFrame, df_genes: DataFrame, name_column_mageck: str = "id", 
-    name_column_genes: str = "Gene", how: str = "left",
-    columns_to_add: List[str] = ["gene_stable_id", "name", "chr", "start", "stop", "strand", "biotype"]) -> DataFrame:
+    df_mageck: DataFrame,
+    df_genes: DataFrame,
+    name_column_mageck: str = "id",
+    name_column_genes: str = "Gene",
+    how: str = "left",
+    columns_to_add: List[str] = [
+        "gene_stable_id",
+        "name",
+        "chr",
+        "start",
+        "stop",
+        "strand",
+        "biotype",
+    ],
+) -> DataFrame:
     """
     Combine gene information dataframe with MAGeCK output dataframe.
 
@@ -520,6 +532,7 @@ def combine_gene_info_with_mageck_output(
     Returns:
     - Merged DataFrame with gene information added to MAGeCK results.
     """
+    df_genes = df_genes.drop_duplicates(keep="first", subset=name_column_genes)
     merged_df = df_mageck.merge(
         df_genes[columns_to_add + [name_column_genes]],
         left_on=name_column_mageck,
