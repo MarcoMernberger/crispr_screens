@@ -774,7 +774,7 @@ def rank_mageck_methods(
         + 0.3 * squash(df["neg_vs_neutral_cohens_d"])
         - 0.3 * df["neg_cv"]
     )
-    df["final_score"] = 0.6 * df["detection_score"] + 0.4 * df["quality_score"]
+    df["final_score"] = 0.7 * df["detection_score"] + 0.3 * df["quality_score"]
     for metric, weight in weights.items():
         if metric in df.columns:
             vals = df[metric].copy()

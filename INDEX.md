@@ -1,10 +1,12 @@
-# Control sgRNA QC - File Index
+# CRISPR Screens Package - File Index
 
 ## 📚 Documentation & Guides
 
 ### English
 - **[IMPLEMENTATION_SUMMARY.md](IMPLEMENTATION_SUMMARY.md)** - Complete implementation summary with all features
 - **[docs/control_qc_readme.md](docs/control_qc_readme.md)** - Comprehensive documentation (installation, usage, interpretation)
+- **[docs/method_comparison_quickstart.md](docs/method_comparison_quickstart.md)** - ⭐ Quick Start: MAGeCK RRA vs MLE Comparison
+- **[docs/method_comparison_guide.md](docs/method_comparison_guide.md)** - Comprehensive Method Comparison Guide
 - **[ARCHITECTURE.txt](ARCHITECTURE.txt)** - Visual architecture overview with data flow diagrams
 
 ### German
@@ -24,6 +26,11 @@
   - Standalone, programmatic, and PyPipeGraph integration
   - Interpretation guidelines
 
+- **[examples/method_comparison_example.py](examples/method_comparison_example.py)** ⭐ NEW!
+  - Complete example for comparing MAGeCK RRA vs MLE
+  - Includes all 4 comparison methods
+  - Detailed interpretation guide
+
 ---
 
 ## 💻 Source Code
@@ -38,6 +45,14 @@
   - `plot_control_pca()` - PCA visualization
   - Helper functions for data loading and processing
 
+- **[src/crispr_screens/core/method_comparison.py](src/crispr_screens/core/method_comparison.py)** ⭐ NEW! - Method Comparison (900+ lines)
+  - `leave_one_replicate_out_analysis()` - Replicate consistency test
+  - `analyze_sgrna_coherence()` - sgRNA coherence per gene
+  - `analyze_control_false_positives()` - Control sgRNA FP check
+  - `permutation_test_analysis()` - Permutation-based null testing
+  - `compare_mageck_methods()` - Comprehensive comparison wrapper
+  - Helper functions for overlap, correlation, etc.
+
 ### Service Layer
 - **[src/crispr_screens/services/io.py](src/crispr_screens/services/io.py)**
   - `control_qc_report()` - I/O wrapper for service layer
@@ -46,6 +61,13 @@
 - **[src/crispr_screens/jobs/qc_jobs.py](src/crispr_screens/jobs/qc_jobs.py)**
   - `control_qc_job()` - PyPipeGraph2 job wrapper
   - Handles dependencies, output files, and invariants
+
+- **[src/crispr_screens/jobs/method_comparison_jobs.py](src/crispr_screens/jobs/method_comparison_jobs.py)** ⭐ NEW!
+  - `mageck_method_comparison_job()` - Comprehensive comparison job
+  - `leave_one_replicate_out_job()` - Leave-one-out analysis job
+  - `sgrna_coherence_job()` - sgRNA coherence job
+  - `control_false_positive_job()` - Control FP check job
+  - `permutation_test_job()` - Permutation test job
 
 ### Package Configuration
 - **[src/crispr_screens/__init__.py](src/crispr_screens/__init__.py)**
@@ -60,6 +82,11 @@
   - Functional tests with mock data
   - Tests imports, analysis, and report generation
   - Run with: `python tests/test_control_qc.py`
+
+- **[tests/test_method_comparison.py](tests/test_method_comparison.py)** ⭐ NEW!
+  - Tests for method comparison functionality
+  - Mock data generation and validation
+  - Run with: `python tests/test_method_comparison.py`
 
 ---
 
@@ -223,15 +250,15 @@ For questions or issues:
 
 ## 📝 Quick Reference
 
-| Need | File |
-|------|------|
-| Quick start | [quickstart_control_qc.py](quickstart_control_qc.py) |
-| Full documentation | [docs/control_qc_readme.md](docs/control_qc_readme.md) |
-| Examples | [examples/control_qc_example.py](examples/control_qc_example.py) |
-| German guide | [KURZANLEITUNG_DE.md](KURZANLEITUNG_DE.md) |
-| Architecture | [ARCHITECTURE.txt](ARCHITECTURE.txt) |
-| Source code | [src/crispr_screens/core/qc.py](src/crispr_screens/core/qc.py) |
-| Tests | [tests/test_control_qc.py](tests/test_control_qc.py) |
+| Need               | File                                                             |
+| ------------------ | ---------------------------------------------------------------- |
+| Quick start        | [quickstart_control_qc.py](quickstart_control_qc.py)             |
+| Full documentation | [docs/control_qc_readme.md](docs/control_qc_readme.md)           |
+| Examples           | [examples/control_qc_example.py](examples/control_qc_example.py) |
+| German guide       | [KURZANLEITUNG_DE.md](KURZANLEITUNG_DE.md)                       |
+| Architecture       | [ARCHITECTURE.txt](ARCHITECTURE.txt)                             |
+| Source code        | [src/crispr_screens/core/qc.py](src/crispr_screens/core/qc.py)   |
+| Tests              | [tests/test_control_qc.py](tests/test_control_qc.py)             |
 
 ---
 
