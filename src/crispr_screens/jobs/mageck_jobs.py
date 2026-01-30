@@ -22,6 +22,7 @@ from crispr_screens.services.spike_evaluation import (
 from crispr_screens.r_integration.mageck_wrapper import run_mageck_scatterview
 from crispr_screens.core.mageck import mageck_count, mageck_test, mageck_mle
 from pandas import DataFrame
+from crispr_screens.services.io import generate_spike_evaluation_report
 import numpy as np
 
 
@@ -568,7 +569,7 @@ def evaluate_spike_in_performance_job(
                 f"AUCC: {row.get('aucc', np.nan):.3f}"
             )
             print(f"   Median Rank: {row.get('median_rank', np.nan):.1f}")
-
+            print(f"   Final Score: {row.get('final_score', np.nan):.3f}")
             # Detection stats
             n_detected = row.get("n_detected_hits", 0)
             n_expected = row.get("n_expected_hits", 0)
@@ -635,8 +636,6 @@ def spike_evaluation_report_job(
         top_n=top_n,
         pdf_report=pdf_report,
     ):
-        from crispr_screens.services.io import generate_spike_evaluation_report
-
         generate_spike_evaluation_report(
             eval_table=evaluation_table,
             output_dir=output_dir,
@@ -647,15 +646,10 @@ def spike_evaluation_report_job(
 
     job = MultiFileGeneratingJob(outfiles, __dump).depends_on(dependencies)
 
-    # Add invariants
-    from crispr_screens.services.io import (
-        generate_spike_evaluation_report as _gen,
-    )
-
     job.depends_on(
         FunctionInvariant(
             f"{prefix}_generate_spike_evaluation_report",
-            _gen,
+            generate_spike_evaluation_report,
         )
     )
 

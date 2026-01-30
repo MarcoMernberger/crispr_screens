@@ -40,6 +40,16 @@ from .jobs.qc_jobs import (
     pairing_qc_plots_job,
     # comprehensive_qc_job,
 )
+from .jobs.method_comparison_jobs import (
+    leave_one_replicate_out_job,
+    sgrna_coherence_job,
+    control_false_positive_job,
+    permutation_test_job,
+    mageck_method_comparison_job,
+    compare_rankings_simple_job,
+)
+
+from .core.mageck import mageck_test, mageck_mle
 
 # from .models import ReportConfig, ResultReport, QCConfig, QCReport
 
@@ -67,5 +77,16 @@ __all__ = [
     "create_spiked_count_table_job",
     "evaluate_spike_in_performance_job",
     "spike_evaluation_report_job",
+<<<<<<< HEAD
     "write_significant_genes_rra_job",
+=======
+    "leave_one_replicate_out_job",
+    "sgrna_coherence_job",
+    "control_false_positive_job",
+    "permutation_test_job",
+    "mageck_method_comparison_job",
+    "mageck_test",
+    "mageck_mle",
+    "compare_rankings_simple_job",
+>>>>>>> 00918086bf52dc27f2811014c791ddef4d1073a6
 ]
