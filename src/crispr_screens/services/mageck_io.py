@@ -6,6 +6,7 @@ from crispr_screens.core.mageck import (
     combine_comparisons,
     split_frame_to_control_and_query,
     combine_gene_info_with_mageck_output,
+    get_significant_genes,
 )
 from crispr_screens.core.mageck_spikein import create_spiked_count_table
 
@@ -138,3 +139,95 @@ def write_spiked_count_table(
         dispersion=dispersion,
     )
     count_spike.to_csv(outfile, sep="\t", index=False)
+
+
+def write_significant_genes(
+    outfile: Union[Path, str],
+    mageck_file: Union[str, Path],
+    fdr_column: str = "pos|fdr",
+    fdr_threshold: float = 0.05,
+    logfc_column: str = "pos|lfc",
+    logfc_threshold: float = 1.0,
+    direction: str = "both",  # "both", "pos", "neg"
+):
+    """
+    write_significant_genes from a mageck gene summary table.
+
+    Parameters
+    ----------
+    outfile : Union[Path, str]
+        The output file to write significant genes to.
+    mageck_file : Union[str, Path]
+        The input mageck gene summary file.
+    fdr_column : str, optional
+        FDR column name, by default "pos|fdr"
+    fdr_threshold : float, optional
+        FDR threshold, by default 0.05
+    logfc_column : str, optional
+        LogFC column name, by default "pos|lfc"
+    logfc_threshold : float, optional
+        LogFC threshold, by default 1.0
+    direction : str, optional
+        Direction of change: "both", "pos", "neg", by default "both"
+    """
+    outfile.parent.mkdir(parents=True, exist_ok=True)
+    mageck_df = pd.read_csv(mageck_file, sep="\t")
+    sig_genes_df = get_significant_genes(
+        mageck_df,
+        fdr_column=fdr_column,
+        fdr_threshold=fdr_threshold,
+        logfc_column=logfc_column,
+        logfc_threshold=logfc_threshold,
+        direction=direction,
+    )
+    sig_genes_df.to_csv(outfile, sep="\t", index=False)
+
+
+def write_significant_genes_rra(
+    mageck_file: Union[str, Path],
+    fdr_threshold: float = 0.05,
+    logfc_threshold: float = 1.0,
+    direction: str = "both",  # "both", "pos", "neg"
+) -> List[Path]:
+    """
+    write_significant_genes_rra for RRA results from mageck.
+
+    Parameters
+    ----------
+    mageck_file : Union[str, Path]
+        The input mageck gene summary file.
+    fdr_threshold : float, optional
+        FDR threshold, by default 0.05
+    logfc_threshold : float, optional
+        LogFC threshold, by default 1.0
+    direction : str, optional
+        Direction of change: "both", "pos", "neg", by default "both"
+
+    Returns
+    -------
+    List[Path]
+        List of output files for enriched and depleted genes.
+    """
+    outfiles = [
+        mageck_file.with_suffix(".enriched.genes.tsv"),
+        mageck_file.with_suffix(".depleted.genes.tsv"),
+    ]
+    write_significant_genes(
+        outfiles[0],
+        mageck_file,
+        fdr_column="pos|fdr",
+        fdr_threshold=fdr_threshold,
+        logfc_column="pos|lfc",
+        logfc_threshold=logfc_threshold,
+        direction="pos",
+    )
+    write_significant_genes(
+        outfiles[1],
+        mageck_file,
+        fdr_column="neg|fdr",
+        fdr_threshold=fdr_threshold,
+        logfc_column="neg|lfc",
+        logfc_threshold=logfc_threshold,
+        direction="neg",
+    )
+    return outfiles

@@ -13,6 +13,7 @@ from crispr_screens.services.mageck_io import (
     create_query_control_sgrna_frames,
     create_combine_gene_info_with_mageck_output,
     write_spiked_count_table,
+    write_significant_genes_rra,
 )
 from crispr_screens.services.spike_evaluation import (
     evaluate_multiple_mageck_results,
@@ -671,3 +672,50 @@ def spike_evaluation_report_job(
     )
 
     return job
+
+
+def write_significant_genes_rra_job(
+    mageck_file: Union[str, Path],
+    fdr_threshold: float = 0.05,
+    logfc_threshold: float = 1.0,
+    direction: str = "both",  # "both", "pos", "neg"
+    dependencies: List[Job] = [],
+) -> MultiFileGeneratingJob:
+    """
+    write_significant_genes_rra_job returns a job to write significant genes for
+    RRA results from mageck.
+
+    mageck_file : Union[str, Path]
+        The input mageck gene summary file.
+    fdr_threshold : float, optional
+        FDR threshold, by default 0.05
+    logfc_threshold : float, optional
+        LogFC threshold, by default 1.0
+    direction : str, optional
+        Direction of change: "both", "pos", "neg", by default "both"
+
+    Returns
+    -------
+    MultiFileGeneratingJob
+        Job that creates output files for enriched and depleted genes.
+    """
+    outfiles = [
+        mageck_file.with_suffix(".enriched.genes.tsv"),
+        mageck_file.with_suffix(".depleted.genes.tsv"),
+    ]
+
+    def __dump(
+        outfiles,
+        mageck_file=mageck_file,
+        fdr_threshold=fdr_threshold,
+        logfc_threshold=logfc_threshold,
+        direction=direction,
+    ):
+        write_significant_genes_rra(
+            mageck_file=mageck_file,
+            fdr_threshold=fdr_threshold,
+            logfc_threshold=logfc_threshold,
+            direction=direction,
+        )
+
+    return MultiFileGeneratingJob(outfiles, __dump).depends_on(dependencies)

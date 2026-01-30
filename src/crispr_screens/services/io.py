@@ -242,6 +242,7 @@ def generate_spike_evaluation_report(
 
     # Read table
     df = read_dataframe(eval_table, dtype={})
+    print(df.head())
 
     # Ensure composite score and rank exist (compute if necessary)
     if "composite_score" not in df.columns or "rank" not in df.columns:
@@ -269,10 +270,11 @@ def generate_spike_evaluation_report(
     lines.append(
         "This report summarizes performance metrics for different MAGeCK analysis methods using spike-in controls. It includes an executive summary, a top-methods table, simple interpretations and recommendations.\n"
     )
-
     # Top methods
     if "rank" in df.columns:
         top = df.sort_values("rank").head(top_n)
+    elif "final_score" in df.columns:
+        top = df.sort_values("final_score", ascending=False).head(top_n)
     elif "composite_score" in df.columns:
         top = df.sort_values("composite_score", ascending=False).head(top_n)
     else:
@@ -285,6 +287,7 @@ def generate_spike_evaluation_report(
         for c in [
             "rank",
             "comparison",
+            "final_score",
             "composite_score",
             "f1",
             "precision",
@@ -322,6 +325,7 @@ def generate_spike_evaluation_report(
         best = top.iloc[0]
         lines.append("## Interpretation & Recommendations\n")
         comp = best.get("composite_score", None)
+        final = best.get("final_score", None)
         f1 = best.get("f1", None)
         prec = best.get("precision", None)
         rec = best.get("recall", None)
@@ -378,6 +382,14 @@ def generate_spike_evaluation_report(
             lines.append(
                 "  - Recommendation: prioritize methods with high composite scores and good F1/AUC values.\n"
             )
+        # Composite score interpretation
+        if pd.notna(final):
+            lines.append(
+                f"- **Final score:** {final:.3f} — this aggregates quality (Cohen's D, neg_CV) and detection scores (recall) metrics (higher is better).\n"
+            )
+            lines.append(
+                "  - Recommendation: prioritize methods with high F1, recall and quality values.\n"
+            )
 
         # Generic recommendations
         lines.append("\n### Actionable recommendations\n")
@@ -409,11 +421,11 @@ def generate_spike_evaluation_report(
     # Create simple bar plot of composite scores
     try:
         plot_df = (
-            df.dropna(subset=["composite_score"])
-            if "composite_score" in df.columns
+            df.dropna(subset=["final_score"])
+            if "final_score" in df.columns
             else df
         )
-        plot_df = plot_df.sort_values("composite_score", ascending=False).head(
+        plot_df = plot_df.sort_values("final_score", ascending=False).head(
             max(top_n, len(plot_df))
         )
         import matplotlib.pyplot as _plt
@@ -421,17 +433,17 @@ def generate_spike_evaluation_report(
         fig, ax = _plt.subplots(figsize=(8, 4))
         ax.barh(
             plot_df.get("comparison", plot_df.index).astype(str),
-            plot_df.get("composite_score", 0),
+            plot_df.get("final_score", 0),
         )
         ax.invert_yaxis()
-        ax.set_xlabel("Composite score")
-        ax.set_title("Method composite scores")
+        ax.set_xlabel("Final score")
+        ax.set_title("Method final scores")
         fig.tight_layout()
         fig.savefig(png_file, dpi=300)
         _plt.close(fig)
-        print(f"Saved composite score plot to {png_file}")
+        print(f"Saved final score plot to {png_file}")
     except Exception as e:
-        print(f"Warning: failed to generate composite score plot: {e}")
+        print(f"Warning: failed to generate final score plot: {e}")
 
     saved_files = {"md": md_file, "png": png_file}
 

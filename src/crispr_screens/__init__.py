@@ -29,6 +29,7 @@ from .jobs.mageck_jobs import (
     create_spiked_count_table_job,
     evaluate_spike_in_performance_job,
     spike_evaluation_report_job,
+    write_significant_genes_rra_job,
 )
 from .jobs.plot_jobs import write_venn_job, write_volcano_plot_job
 from .jobs.qc_jobs import (
@@ -66,4 +67,5 @@ __all__ = [
     "create_spiked_count_table_job",
     "evaluate_spike_in_performance_job",
     "spike_evaluation_report_job",
+    "write_significant_genes_rra_job",
 ]

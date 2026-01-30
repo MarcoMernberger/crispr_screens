@@ -541,3 +541,54 @@ def combine_gene_info_with_mageck_output(
     )
     merged_df.drop(columns=[name_column_genes], inplace=True)
     return merged_df
+
+
+def get_significant_genes(
+    df_mageck: DataFrame,
+    fdr_column: str = "pos|fdr",
+    fdr_threshold: float = 0.05,
+    logfc_column: str = "pos|lfc",
+    logfc_threshold: float = 1.0,
+    direction: str = "both",  # "both", "pos", "neg"
+) -> DataFrame:
+    """
+    get_significant_genes filters the gene summary table for significant hits.
+
+        Parameters
+    ----------
+    df_mageck : DataFrame
+        Mageck output dataframe, gene summary table.
+    fdr_column : str, optional
+        False Discovery Rate column, by default "pos|fdr"
+    fdr_threshold : float, optional
+        maximum FDR, by default 0.05
+    logfc_column : str, optional
+        logFC column, by default "pos|lfc"
+    logfc_threshold : float, optional
+        minimum fold change, by default 1.0
+    direction : str, optional
+        positive or nagative selection, by default "both"
+
+    Returns
+    -------
+    DataFrame
+        Filtered dataframe with significant genes only.
+    """
+    if direction == "both":
+        sig_genes = df_mageck[
+            (df_mageck[fdr_column] <= fdr_threshold)
+            & (df_mageck[logfc_column].abs() >= logfc_threshold)
+        ]
+    elif direction == "pos":
+        sig_genes = df_mageck[
+            (df_mageck[fdr_column] <= fdr_threshold)
+            & (df_mageck[logfc_column] >= logfc_threshold)
+        ]
+    elif direction == "neg":
+        sig_genes = df_mageck[
+            (df_mageck[fdr_column] <= fdr_threshold)
+            & (df_mageck[logfc_column] <= -logfc_threshold)
+        ]
+    else:
+        raise ValueError("direction must be one of: 'both', 'pos', or 'neg'")
+    return sig_genes

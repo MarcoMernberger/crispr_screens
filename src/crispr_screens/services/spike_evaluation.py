@@ -136,20 +136,40 @@ def calculate_precision_recall(
     }
 
 
-def squash(x, scale: float = 1.0):
+def squash(x, scale: float = 1.0, method: str = "linear"):
     """
-    Vectorized squash: accepts a pandas Series (preferred) or a scalar.
-    For Series, returns a Series with the same index, mapping x>=0 -> x/(x+scale).
+    Vectorized squash: accepts pd.Series or scalar.
+    Methods:
+      - "linear": x/(x+scale)
+      - "arctan": (2/pi)*arctan(x/scale) (good for effect sizes like Cohen's d)
+      - "tanh": tanh(x/scale)
+    Returns same type as input (Series or scalar). Outputs clipped to [0.0, 1.0].
     """
     # Series input -> return Series
     if isinstance(x, pd.Series):
-        x_s = x.astype(float).copy()
-        x_s = x_s.clip(lower=0.0)
-        return x_s / (x_s + float(scale))
+        x_s = x.astype(float).copy().clip(lower=0.0)
+        if method == "arctan":
+            out = (2.0 / np.pi) * np.arctan(x_s / float(scale))
+        elif method == "tanh":
+            out = np.tanh(x_s / float(scale))
+        else:
+            out = x_s / (x_s + float(scale))
+        # clip numerical artefacts and keep same index
+        out = out.clip(lower=0.0, upper=1.0)
+        return out
 
     # Scalar fallback
     x = max(0.0, float(x))
-    return x / (x + scale)
+    if method == "arctan":
+        out = float((2.0 / np.pi) * np.arctan(x / float(scale)))
+    elif method == "tanh":
+        out = float(np.tanh(x / float(scale)))
+    else:
+        out = x / (x + scale)
+    return float(min(max(out, 0.0), 1.0))
+
+
+# ...existing code...
 
 
 def calculate_separation_metrics(
