@@ -6,7 +6,17 @@ from pypipegraph2 import (
     ParameterInvariant,
 )
 from pathlib import Path
-from typing import Dict, Optional, Union, List, Tuple, Literal, Callable
+from typing import (
+    Dict,
+    Optional,
+    Union,
+    List,
+    Tuple,
+    Literal,
+    Callable,
+    Any,
+    Iterable,
+)
 from crispr_screens.services.mageck_io import (
     write_filtered_mageck_comparison,
     combine_comparison_output,
@@ -14,6 +24,8 @@ from crispr_screens.services.mageck_io import (
     create_combine_gene_info_with_mageck_output,
     write_spiked_count_table,
     write_significant_genes_rra,
+    write_filter_mageck_counts,
+    write_count_table_with_MA_CPM,
 )
 from crispr_screens.services.spike_evaluation import (
     evaluate_multiple_mageck_results,
@@ -713,3 +725,184 @@ def write_significant_genes_rra_job(
         )
 
     return MultiFileGeneratingJob(outfiles, __dump).depends_on(dependencies)
+
+
+def mageck_filter_count_job(
+    count_table_file: Union[str, Path],
+    samples: Iterable[str],
+    outfile: Union[str, Path],
+    conditions: Dict[str, Any],
+    baseline_samples: Iterable[str],
+    aggregations: Optional[Dict[str, Tuple[List[str], Callable]]] = None,
+    exclude_samples: Optional[Iterable[str]] = None,
+    sgrna_col: str = "sgRNA",
+    gene_col: str = "Gene",
+    dependencies: List[Job] = [],
+) -> Job:
+    """
+    mageck_filter_count_job returns a job to filter MAGeCK count table based on
+    the number of baseline samples with minimum count.
+
+
+    Parameters
+    ----------
+    count_table_file : Union[str, Path]
+        file to count table
+    samples : Iterable[str]
+        Names of all sample columns (raw counts) like
+        ["Total1","Total2","Total3","Sorted1","Sorted2","Sorted3"].
+    outfile : Union[str, Path]
+        new file to write filtered count table
+    conditions : Dict[str, Any]
+        Dict defining filtering rules. Supported keys:
+
+            Column thresholds (simple):
+            - "col_filters": list of dicts, each with:
+                {"col": <column name>, "op": one of {"<","<="," >",">=","==","!="}, "value": number}
+                Example:
+                {"col_filters": [{"col": "Total_Rep1", "op": ">=", "value": 2}]}
+
+            Baseline detectability:
+            - "baseline_min_count": int (e.g. 20)
+            - "baseline_min_n": int (e.g. 2)  # at least this many baseline samples pass the count
+                Example:
+                {"baseline_min_count": 20, "baseline_min_n": 2}
+
+            Missing handling:
+            - "na_policy": "drop" or "keep" (default "drop")
+                "drop": rows with NA in any used filter metric are removed
+    baseline_samples : Iterable[str]
+        Names of baseline sample columns (raw counts) like
+        ["Total1","Total2","Total3"].
+    aggregations : Optional[Dict[str,, optional
+        Optional dict defining new aggregated columns to create prior to filtering.
+        You can specify in aggregations a new column name, a list of existing
+        columns to aggregate and a function to use for aggregation.
+        Supported functions are any pandas DataFrame aggregation functions like
+        min, max, mean, median, etc., by default None
+    exclude_samples : Optional[Iterable[str]], optional
+        Samples to exclude (both from raw counts and any derived columns
+        mentioning them), by default None
+    sgrna_col : str, optional
+        Name of the sgRNA column, by default "sgRNA"
+    gene_col : str, optional
+        Name of the gene column, by default "Gene"
+    dependencies : List[Job], optional
+        job dependencies, by default []
+
+    Returns
+    -------
+    Job
+        Job that creates filtered MAGeCK count table.
+    """
+    outfiles = [outfile, Path(outfile.with_suffix(".full.tsv"))]
+
+    def __dump(
+        outfiles,
+        count_table_file=count_table_file,
+        samples=samples,
+        conditions=conditions,
+        baseline_samples=baseline_samples,
+        aggregations=aggregations,
+        exclude_samples=exclude_samples,
+        sgrna_col=sgrna_col,
+        gene_col=gene_col,
+    ):
+        write_filter_mageck_counts(
+            count_table_file=count_table_file,
+            samples=samples,
+            outfile=outfiles[0],
+            conditions=conditions,
+            baseline_samples=baseline_samples,
+            aggregations=aggregations,
+            exclude_samples=exclude_samples,
+            sgrna_col=sgrna_col,
+            gene_col=gene_col,
+        )
+
+    return MultiFileGeneratingJob(outfiles, __dump).depends_on(dependencies)
+
+
+def write_count_table_with_MA_CPM_job(
+    count_tsv: Union[str, Path],
+    outfile: Union[str, Path],
+    method: str = "median",
+    pseudocount: float = 1.0,
+    paired_replicates: bool = False,
+    conditions_dict: Dict[str, List[str]] = {},
+    baseline_condition: str = "total",
+    control_sgrna_txt: Optional[Union[Path, str]] = None,
+    sgrna_col: str = "sgRNA",
+    gene_col: str = "Gene",
+    delimiter: str = "_",
+    suffix: str = "CPM_MA",
+    dependencies: List[Job] = [],
+) -> Job:
+    """
+    write_count_table_with_MA_CPM to add MA and CPM columns to count table.
+
+    Parameters
+    ----------
+    count_tsv : Union[str, Path]
+        Input count table file.
+    outdir : Union[str, Path]
+        Output directory to save the modified count table.
+    method : str, optional
+        Normalization method for size factor calculation, by default "median"
+    pseudocount : float, optional
+        Pseudocount to add when calculating logCPM, by default 1.0
+    paired_replicates : bool, optional
+        Whether replicates are paired, by default False
+    conditions_dict : Dict[str, List[str]], optional
+        Dictionary mapping condition names to sample names, by default {}
+    baseline_condition : str, optional
+        Name of the baseline condition in conditions_dict, by default "total"
+    control_sgrna_txt : Optional[Union[Path, str]], optional
+        Path to control sgRNA file, by default None
+    sgrna_col : str, optional
+        Column name for sgRNA identifiers, by default "sgRNA"
+    gene_col : str, optional
+        Column name for gene identifiers, by default "Gene"
+    delimiter : str, optional
+        Delimiter used in sample names to separate conditions, by default "_"
+    suffix : str, optional
+        uffix for the output file name, by default "CPM_MA"
+    dependencies : List[Job], optional
+        Job dependencies, by default []
+
+    Returns
+    -------
+    Job
+        Job that creates the count table with added MA and CPM columns.
+    """
+    outfile = Path(outfile)
+
+    def __dump(
+        outfile,
+        count_tsv=count_tsv,
+        method=method,
+        pseudocount=pseudocount,
+        paired_replicates=paired_replicates,
+        conditions_dict=conditions_dict,
+        baseline_condition=baseline_condition,
+        control_sgrna_txt=control_sgrna_txt,
+        sgrna_col=sgrna_col,
+        gene_col=gene_col,
+        delimiter=delimiter,
+        suffix=suffix,
+    ):
+        write_count_table_with_MA_CPM(
+            count_tsv=count_tsv,
+            method=method,
+            pseudocount=pseudocount,
+            paired_replicates=paired_replicates,
+            conditions_dict=conditions_dict,
+            baseline_condition=baseline_condition,
+            control_sgrna_txt=control_sgrna_txt,
+            sgrna_col=sgrna_col,
+            gene_col=gene_col,
+            delimiter=delimiter,
+            suffix=suffix,
+        )
+
+    return FileGeneratingJob(outfile, __dump).depends_on(dependencies)

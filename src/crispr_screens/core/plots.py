@@ -778,9 +778,8 @@ def plot_control_replicate_correlation(
 
 
 def plot_ma(
-    logcpm_df: DataFrame,
     sample_col: str,
-    baseline_cols: List[str],
+    ma_df: DataFrame,
     ax: Optional[plt.Axes] = None,
     compute_trend: bool = True,
     title: Optional[str] = None,
@@ -795,12 +794,8 @@ def plot_ma(
 
     Parameters
     ----------
-    logcpm_df : DataFrame
-        Log2(CPM+1) values.
     sample_col : str
         Sample column name.
-    baseline_cols : list
-        Baseline columns (will be averaged).
     ax : plt.Axes, optional
         Axes to plot on. If None, creates new figure.
     compute_trend : bool
@@ -823,15 +818,17 @@ def plot_ma(
         fig, ax = plt.subplots(figsize=(8, 6))
 
     # Compute M and A
-    baseline_mean = logcpm_df[baseline_cols].mean(axis=1)
-    M = logcpm_df[sample_col] - baseline_mean
-    A = 0.5 * (logcpm_df[sample_col] + baseline_mean)
+    # baseline_mean = logcpm_df[baseline_cols].mean(axis=1)
+    # M = logcpm_df[sample_col] - baseline_mean
+    # A = 0.5 * (logcpm_df[sample_col] + baseline_mean)
 
     # Remove NaN
-    valid_mask = ~(M.isna() | A.isna())
-    M_clean = M[valid_mask]
-    A_clean = A[valid_mask]
+    # valid_mask = ~(M.isna() | A.isna())
+    # M_clean = M[valid_mask]
+    # A_clean = A[valid_mask]
 
+    M_clean = ma_df[sample_col + "-M"].values
+    A_clean = ma_df[sample_col + "-A"].values
     # Scatter plot
     ax.scatter(A_clean, M_clean, alpha=alpha, s=s, c="gray", rasterized=True)
 
@@ -893,9 +890,7 @@ def plot_ma(
 
 
 def plot_ma_grid(
-    logcpm_df: DataFrame,
-    conditions_dict: Dict[str, List[str]],
-    baseline_cols: List[str],
+    ma_df: DataFrame,
     figsize: Optional[Tuple[float, float]] = None,
     compute_trend: bool = True,
 ) -> Tuple[plt.Figure, Dict]:
@@ -921,11 +916,11 @@ def plot_ma_grid(
         (fig, metrics_dict) where metrics_dict maps sample -> metrics.
     """
     # Collect all non-baseline samples
-    all_samples = []
-    for condition, samples in conditions_dict.items():
-        for sample in samples:
-            if sample not in baseline_cols:
-                all_samples.append(sample)
+    all_samples = [col[:-2] for col in ma_df.columns if col.endswith("-M")]
+    # for condition, samples in conditions_dict.items():
+    #     for sample in samples:
+    #         if sample not in baseline_cols:
+    #             all_samples.append(sample)
 
     n_samples = len(all_samples)
     if n_samples == 0:
@@ -958,10 +953,10 @@ def plot_ma_grid(
 
     for i, sample in enumerate(all_samples):
         ax = axes[i]
+        ma_sample = ma_df[[sample + "-M", sample + "-A"]].dropna()
         ax_out, metrics = plot_ma(
-            logcpm_df,
             sample,
-            baseline_cols,
+            ma_df=ma_sample,
             ax=ax,
             compute_trend=compute_trend,
             title=sample,

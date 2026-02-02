@@ -1,5 +1,5 @@
 import pandas as pd  # type: ignore
-from typing import Dict, Optional, Union, List, Tuple, Callable
+from typing import Dict, Optional, Union, List, Tuple, Callable, Any, Iterable
 from pathlib import Path
 from crispr_screens.core.mageck import (
     filter_multiple_mageck_comparisons,
@@ -7,8 +7,14 @@ from crispr_screens.core.mageck import (
     split_frame_to_control_and_query,
     combine_gene_info_with_mageck_output,
     get_significant_genes,
+    filter_mageck_counts,
 )
 from crispr_screens.core.mageck_spikein import create_spiked_count_table
+from crispr_screens.core.qc import (
+    read_counts,
+    calculate_norm_cpms_and_ma,
+    calculate_size_factors_for_method,
+)
 
 
 def write_filtered_mageck_comparison(
@@ -231,3 +237,101 @@ def write_significant_genes_rra(
         direction="neg",
     )
     return outfiles
+
+
+def write_filter_mageck_counts(
+    count_table_file: Union[str, Path],
+    samples: Iterable[str],
+    outfile: Union[str, Path],
+    conditions: Dict[str, Any],
+    baseline_samples: Iterable[str],
+    aggregations: Optional[Dict[str, Tuple[List[str], Callable]]] = None,
+    exclude_samples: Optional[Iterable[str]] = None,
+    sgrna_col: str = "sgRNA",
+    gene_col: str = "Gene",
+) -> Path:
+    """
+    write_filter_mageck_counts to filter low count sgRNAs.
+
+    Parameters
+    ----------
+    count_table_file : Union[str, Path]
+        The input mageck count table file.
+    samples : Iterable[str]
+        Names of all sample columns (raw counts) like
+        ["Total1","Total2","Total3","Sorted1","Sorted2","Sorted3"].
+    outfile : Union[str, Path]
+        The output filtered count table file.
+    filter_threshold : int, optional
+        The count threshold below which sgRNAs are filtered, by default 5
+    paired_samples_before_after : Dict[str, str]
+        A dictionary mapping 'before' sample names to 'after' sample names.
+    min_baseline_above_threshold : int, optional
+        Minimum number of 'before' samples that must be above the threshold,
+        by default 1
+
+    Returns
+    -------
+    Path
+        The output filtered count table file path.
+    """
+
+    outfile = Path(outfile)
+    outfile2 = Path(outfile.with_suffix(".full.tsv"))
+    outfile.parent.mkdir(parents=True, exist_ok=True)
+    count_df = pd.read_csv(count_table_file, sep="\t")
+    filtered_count_df = filter_mageck_counts(
+        count_df,
+        conditions=conditions,
+        baseline_samples=baseline_samples,
+        aggregations=aggregations,
+        exclude_samples=exclude_samples,
+    )
+    colums_to_keep = [sgrna_col, gene_col] + samples
+    if exclude_samples is not None:
+        colums_to_keep = [c for c in colums_to_keep if c not in exclude_samples]
+    filtered_count_df[colums_to_keep].to_csv(outfile, sep="\t", index=False)
+    filtered_count_df.to_csv(outfile2, sep="\t", index=False)
+    return outfile
+
+
+def write_count_table_with_MA_CPM(
+    count_tsv: Union[str, Path],
+    method: str = "median",
+    pseudocount: float = 1.0,
+    paired_replicates: bool = False,
+    conditions_dict: Dict[str, List[str]] = {},
+    baseline_condition: str = "total",
+    control_sgrna_txt: Optional[Union[Path, str]] = None,
+    sgrna_col: str = "sgRNA",
+    gene_col: str = "Gene",
+    delimiter: str = "_",
+    suffix: str = "CPM_MA",
+) -> Path:
+    """
+    write_count_table_with_MA_CPM to add MA and CPM columns to count table.
+
+    Parameters
+    """
+    outfile = Path(count_tsv).with_suffix(f".{suffix}.tsv")
+    count_df, sample_cols = read_counts(count_tsv, sgrna_col, gene_col)
+    size_factors = calculate_size_factors_for_method(
+        method=method,
+        count_df=count_df,
+        sample_cols=sample_cols,
+        control_sgrna_txt=control_sgrna_txt,
+        sgrna_col=sgrna_col,
+    )
+    df_out = calculate_norm_cpms_and_ma(
+        count_df=count_df,
+        sample_cols=sample_cols,
+        method=method,
+        size_factors=size_factors,
+        pseudocount=pseudocount,
+        paired_replicates=paired_replicates,
+        conditions_dict=conditions_dict,
+        baseline_condition=baseline_condition,
+        delimiter=delimiter,
+    )
+    df_out.to_csv(outfile, sep="\t", index=False)
+    return outfile

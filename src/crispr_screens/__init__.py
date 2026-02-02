@@ -30,6 +30,8 @@ from .jobs.mageck_jobs import (
     evaluate_spike_in_performance_job,
     spike_evaluation_report_job,
     write_significant_genes_rra_job,
+    mageck_filter_count_job,
+    write_count_table_with_MA_CPM_job,
 )
 from .jobs.plot_jobs import write_venn_job, write_volcano_plot_job
 from .jobs.qc_jobs import (
@@ -77,9 +79,6 @@ __all__ = [
     "create_spiked_count_table_job",
     "evaluate_spike_in_performance_job",
     "spike_evaluation_report_job",
-<<<<<<< HEAD
-    "write_significant_genes_rra_job",
-=======
     "leave_one_replicate_out_job",
     "sgrna_coherence_job",
     "control_false_positive_job",
@@ -88,5 +87,6 @@ __all__ = [
     "mageck_test",
     "mageck_mle",
     "compare_rankings_simple_job",
->>>>>>> 00918086bf52dc27f2811014c791ddef4d1073a6
+    "mageck_filter_count_job",
+    "write_count_table_with_MA_CPM_job",
 ]

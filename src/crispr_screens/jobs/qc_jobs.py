@@ -261,8 +261,10 @@ def standard_qc_job(
     sgrna_col: str = "sgRNA",
     gene_col: str = "Gene",
     delimiter: str = "_",
+    prefix: str = "",
     norm_methods: Union[List[str], None] = None,
     pseudocount: float = 1.0,
+    paired_replicates: bool = False,
     save_formats: Union[List[str], None] = None,
     dependencies: List[Job] = [],
 ) -> MultiFileGeneratingJob:
@@ -296,6 +298,8 @@ def standard_qc_job(
         "stable_set"].
     pseudocount : float
         Pseudocount for log transformation.
+    paired_replicates : bool
+        Whether replicates are paired.
     save_formats : list of str, optional
         Plot formats to save. Default: ["png"].
     dependencies : list
@@ -316,37 +320,38 @@ def standard_qc_job(
         norm_methods = ["median", "total", "stable_set"]
 
     # Define output files
+
     outfiles = [
-        output_dir / "library_stats.tsv",
-        output_dir / "size_factors.tsv",
-        output_dir / "size_factors_comparison.tsv",
-        output_dir / "normalization_recommendation.json",
-        output_dir / "analysis_recommendation.json",
-        output_dir / "qc_summary.md",
+        output_dir / f"{prefix}_library_stats.tsv",
+        output_dir / f"{prefix}_size_factors.tsv",
+        output_dir / f"{prefix}_size_factors_comparison.tsv",
+        output_dir / f"{prefix}_normalization_recommendation.json",
+        output_dir / f"{prefix}_analysis_recommendation.json",
+        output_dir / f"{prefix}_qc_summary.md",
     ]
 
     # Add control QC file if controls provided
     if control_sgrna_txt is not None:
-        outfiles.append(output_dir / "control_neutrality_qc.json")
+        outfiles.append(output_dir / f"{prefix}_control_neutrality_qc.json")
 
     # Add per-normalization method output directories
     for method in norm_methods:
-        method_dir = output_dir / f"norm_{method}"
+        method_dir = output_dir / f"{prefix}_norm_{method}"
         outfiles.extend(
             [
-                method_dir / "logfc_distribution.tsv",
-                method_dir / "replicate_consistency.tsv",
+                method_dir / f"{prefix}_logfc_distribution.tsv",
+                method_dir / f"{prefix}_replicate_consistency.tsv",
             ]
         )
         for fmt in save_formats:
-            outfiles.append(method_dir / f"ma_plots.{fmt}")
+            outfiles.append(method_dir / f"{prefix}_ma_plots.{fmt}")
 
     # Add summary plots
     for fmt in save_formats:
         outfiles.extend(
             [
-                output_dir / f"pca_full_library.{fmt}",
-                output_dir / f"sample_correlations.{fmt}",
+                output_dir / f"{prefix}_pca_full_library.{fmt}",
+                output_dir / f"{prefix}_sample_correlations.{fmt}",
             ]
         )
 
@@ -360,8 +365,10 @@ def standard_qc_job(
         sgrna_col=sgrna_col,
         gene_col=gene_col,
         delimiter=delimiter,
+        prefix=prefix,
         norm_methods=norm_methods,
         pseudocount=pseudocount,
+        paired_replicates=paired_replicates,
         save_formats=save_formats,
     ):
         standard_qc_report(
@@ -373,8 +380,10 @@ def standard_qc_job(
             sgrna_col=sgrna_col,
             gene_col=gene_col,
             delimiter=delimiter,
+            prefix=prefix,
             norm_methods=norm_methods,
             pseudocount=pseudocount,
+            paired_replicates=paired_replicates,
             save_formats=save_formats,
         )
 
@@ -383,7 +392,7 @@ def standard_qc_job(
     # Add invariants for core functions
     job.depends_on(
         FunctionInvariant(
-            "standard_qc_generate_standard_qc_report",
+            f"{prefix}_standard_qc_generate_standard_qc_report",
             generate_standard_qc_report,
             allowed_non_locals=[
                 "calculate_cpm",
@@ -409,49 +418,49 @@ def standard_qc_job(
 
     job.depends_on(
         FunctionInvariant(
-            "standard_qc_compute_size_factors_total",
+            f"{prefix}_standard_qc_compute_size_factors_total",
             compute_size_factors_total,
         )
     )
 
     job.depends_on(
         FunctionInvariant(
-            "standard_qc_compute_size_factors_median_ratio",
+            f"{prefix}_standard_qc_compute_size_factors_median_ratio",
             compute_size_factors_median_ratio,
         )
     )
 
     job.depends_on(
         FunctionInvariant(
-            "standard_qc_compute_size_factors_stable_set",
+            f"{prefix}_standard_qc_compute_size_factors_stable_set",
             compute_size_factors_stable_set,
         )
     )
 
     job.depends_on(
         FunctionInvariant(
-            "standard_qc_qc_logfc_distribution",
+            f"{prefix}_standard_qc_qc_logfc_distribution",
             qc_logfc_distribution,
         )
     )
 
     job.depends_on(
         FunctionInvariant(
-            "standard_qc_qc_replicate_consistency",
+            f"{prefix}_standard_qc_qc_replicate_consistency",
             qc_replicate_consistency,
         )
     )
 
     job.depends_on(
         FunctionInvariant(
-            "standard_qc_choose_best_normalization",
+            f"{prefix}_standard_qc_choose_best_normalization",
             choose_best_normalization,
         )
     )
 
     job.depends_on(
         FunctionInvariant(
-            "standard_qc_recommend_analysis_method",
+            f"{prefix}_standard_qc_recommend_analysis_method",
             recommend_analysis_method,
         )
     )
@@ -459,7 +468,7 @@ def standard_qc_job(
     # Add parameter invariant
     job.depends_on(
         ParameterInvariant(
-            "standard_qc_params",
+            f"{prefix}_standard_qc_params",
             (
                 str(count_tsv),
                 str(metadata_tsv) if metadata_tsv else None,

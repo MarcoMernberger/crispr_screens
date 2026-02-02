@@ -3,7 +3,7 @@ import re
 import shutil
 import subprocess
 import rpy2.robjects as ro
-from typing import Dict, Optional, Union, List, Callable
+from typing import Dict, Optional, Union, List, Callable, Any, Iterable, Tuple
 from pandas import DataFrame  # type: ignore
 from pathlib import Path
 
@@ -592,3 +592,208 @@ def get_significant_genes(
     else:
         raise ValueError("direction must be one of: 'both', 'pos', or 'neg'")
     return sig_genes
+
+
+# def filter_mageck_counts(
+#     count_table: DataFrame,
+#     paired_samples_before_after: Dict[str, str],
+#     filter_thresholds: Dict[str, int] = {5},
+#     min_baseline_above_threshold: int = 1,
+#     samples_to_excluide: Optional[List[str]] = None,
+
+# ) -> DataFrame:
+#     """
+#     filter_mageck_counts filters the mageck count table based on a minimum count threshold
+#     in the baseline samples of paired samples.
+
+#     Parameters
+#     ----------
+#     count_table : DataFrame
+#         Mageck count table dataframe.
+#     filter_threshold : int, optional
+#         minimum count threshold, by default 10
+#     paired_samples : Dict[str, str]
+#         dictionary of paired samples, by default {}
+
+#     Returns
+#     -------
+#     DataFrame
+#         Filtered mageck count table dataframe.
+#     """
+#     df = count_table.copy()
+#     # identify count columns
+#     for baseline, cond in paired_samples_before_after.items():
+#         if baseline not in df.columns or cond not in df.columns:
+#             raise ValueError(
+#                 f"Paired sample columns {baseline} and {cond} not found in count table."
+#             )
+#     baseline_cols = list(paired_samples_before_after.keys())
+#     mask = df[baseline_cols].ge(filter_threshold).sum(axis=1) >= min_baseline_above_threshold
+#     return df[mask].copy()
+
+
+def filter_mageck_counts(
+    df: pd.DataFrame,
+    conditions: Dict[str, Any],
+    baseline_samples: Iterable[str],
+    aggregations: Optional[Dict[str, Tuple[List[str], Callable]]] = None,
+    exclude_samples: Optional[Iterable[str]] = None,
+) -> pd.DataFrame:
+    """
+    Filter an *annotated* MAGeCK-style count table.
+
+    Assumptions
+    ----------
+    - `df` contains raw counts for samples (e.g. columns Total1..3, Sorted1..3)
+    - `df` may also contain derived columns (logCPM_*, M_*, A_* etc.)
+    - You want to filter by:
+        1) arbitrary column-based thresholds (A/M/logCPM/etc.)
+        2) baseline detectability: at least N baseline samples have raw counts >= min_count
+        3) potenmtially aggregations of multiple columns (e.g. min(A_rep*), mean(M_rep*), etc.)
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        Annotated count table.
+    conditions : Dict[str, Any]
+        Dict defining filtering rules. Supported keys:
+
+            Column thresholds (simple):
+            - "col_filters": list of dicts, each with:
+                {"col": <column name>, "op": one of {"<","<="," >",">=","==","!="}, "value": number}
+                Example:
+                {"col_filters": [{"col": "Total_Rep1", "op": ">=", "value": 2}]}
+
+            Baseline detectability:
+            - "baseline_min_count": int (e.g. 20)
+            - "baseline_min_n": int (e.g. 2)  # at least this many baseline samples pass the count
+                Example:
+                {"baseline_min_count": 20, "baseline_min_n": 2}
+
+            Missing handling:
+            - "na_policy": "drop" or "keep" (default "drop")
+                "drop": rows with NA in any used filter metric are removed
+    baseline_samples : List[str]
+        Names of baseline sample columns (raw counts) like
+        ["Total1","Total2","Total3"].
+    aggregations : Optional[Dict[str, Tuple[List[str], Callable]]], optional
+        Optional dict defining new aggregated columns to create prior to filtering.
+        You can specify in aggregations a new column name, a list of existing
+        columns to aggregate and a function to use for aggregation.
+        Supported functions are any pandas DataFrame aggregation functions like
+        min, max, mean, median, etc., by default None
+    exclude_samples : Optional[Iterable[str]], optional
+        Samples to exclude (both from raw counts and any derived columns
+        mentioning them), by default None
+
+    Returns
+    -------
+    pd.DataFrame
+        Filtered DataFrame
+    """
+
+    def _apply_op(series: pd.Series, op: str, value: Any) -> pd.Series:
+        if op == "<":
+            return series < value
+        if op == "<=":
+            return series <= value
+        if op == ">":
+            return series > value
+        if op == ">=":
+            return series >= value
+        if op == "==":
+            return series == value
+        if op == "!=":
+            return series != value
+        raise ValueError(f"Unsupported op: {op}")
+
+    def _aggregate(frame: pd.DataFrame, how: str) -> pd.Series:
+        how = how.lower()
+        if how == "min":
+            return frame.min(axis=1)
+        if how == "max":
+            return frame.max(axis=1)
+        if how == "mean":
+            return frame.mean(axis=1)
+        if how == "median":
+            return frame.median(axis=1)
+        raise ValueError(f"Unsupported aggregation reduce: {how}")
+
+    if not isinstance(df, pd.DataFrame):
+        raise TypeError("df must be a pandas DataFrame")
+
+    na_policy = conditions.get("na_policy", "drop")
+    if na_policy not in {"drop", "keep"}:
+        raise ValueError("conditions['na_policy'] must be 'drop' or 'keep'")
+    exclude_samples = set(exclude_samples or [])
+    drop_excluded_columns = len(exclude_samples) > 0
+    baseline_samples = [s for s in baseline_samples if s not in exclude_samples]
+    if len(baseline_samples) == 0:
+        raise ValueError("No baseline_samples left after excluding samples.")
+    out = df.copy()
+    out[baseline_samples].apply(pd.to_numeric, errors="raise")
+
+    # Drop any derived columns that reference excluded sample names
+    if drop_excluded_columns:
+        raw_excl = []
+        for col in out.columns:
+            for s in exclude_samples:
+                if s in col:
+                    raw_excl.append(col)
+        out = out.drop(columns=raw_excl, errors="ignore")
+
+    # Build filter mask
+    mask = pd.Series(True, index=out.index)
+
+    used_cols_for_na: set[str] = set()
+
+    # Baseline detectability
+    baseline_min_count = conditions.get("baseline_min_count", None)
+    baseline_min_n = conditions.get("baseline_min_n", None)
+    if baseline_min_count is not None or baseline_min_n is not None:
+        if baseline_min_count is None or baseline_min_n is None:
+            raise ValueError(
+                "Provide BOTH 'baseline_min_count' and 'baseline_min_n' if using baseline detectability."
+            )
+
+        missing = [c for c in baseline_samples if c not in out.columns]
+        if missing:
+            raise ValueError(f"Baseline raw count columns not found: {missing}")
+
+        # number of baseline samples above threshold
+        n_ok = (out[baseline_samples] >= int(baseline_min_count)).sum(axis=1)
+        used_cols_for_na.update(baseline_samples)
+        mask &= n_ok >= int(baseline_min_n)
+
+    # aggregations
+    if aggregations:
+        for new_col, (cols, how) in aggregations.items():
+            missing = [c for c in cols if c not in out.columns]
+            if missing:
+                raise ValueError(
+                    f"Columns for aggregation '{new_col}' not found: {missing}"
+                )
+            frame = out[list(cols)].apply(pd.to_numeric, errors="coerce")
+            used_cols_for_na.update(cols)
+            out[new_col] = _aggregate(frame, how)
+
+    # Simple column filters
+    for f in conditions.get("col_filters", []) or []:
+        col = f["col"]
+        op = f["op"]
+        val = f["value"]
+        if col not in out.columns:
+            raise ValueError(
+                f"Column not found for col_filters: {col}. Do you need to aggregate first?"
+            )
+        s = pd.to_numeric(out[col], errors="coerce")
+        used_cols_for_na.add(col)
+        mask &= _apply_op(s, op, val)
+
+    # NA policy
+    if na_policy == "drop" and used_cols_for_na:
+        any_na = out[list(used_cols_for_na)].isna().any(axis=1)
+        mask &= ~any_na
+
+    filtered = out.loc[mask].reset_index(drop=True)
+    return filtered
