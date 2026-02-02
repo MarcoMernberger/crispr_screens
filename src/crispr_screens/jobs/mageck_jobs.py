@@ -32,7 +32,7 @@ from crispr_screens.services.spike_evaluation import (
     rank_mageck_methods,
 )
 from crispr_screens.r_integration.mageck_wrapper import run_mageck_scatterview
-from crispr_screens.core.mageck import mageck_count, mageck_test, mageck_mle
+from crispr_screens.core.mageck import mageck_count, mageck_test, mageck_mle, mageck_count2
 from pandas import DataFrame
 from crispr_screens.services.io import generate_spike_evaluation_report
 import numpy as np
@@ -244,6 +244,47 @@ def mageck_count_job(
             samples=samples,
             out_dir=out_dir,
             prefix=prefix,
+            control_sgrnas=control_sgrnas,
+            norm_method=norm_method,
+            pdf_report=pdf_report,
+            other_parameter=other_parameter,
+        )
+
+    return FileGeneratingJob(outfile, __dump).depends_on(dependencies)
+
+
+def mageck_count_job2(
+    sgrna_list: Union[Path, str],
+    samples: dict,
+    out_dir: Union[Path, str],
+    prefix: str,
+    count_table: Optional[Union[Path, str]] = None,
+    control_sgrnas=Optional[: Union[Path, str]],
+    norm_method: str = None,
+    pdf_report: bool = False,
+    other_parameter: Dict[str, str] = [],
+    dependencies: List[Job] = [],
+):
+    outfile = Path(out_dir) / f"{prefix}.count.txt"
+
+    def __dump(
+        outfile,
+        sgrna_list=sgrna_list,
+        samples=samples,
+        out_dir=out_dir,
+        prefix=prefix,
+        count_table=count_table,
+        control_sgrnas=control_sgrnas,
+        norm_method=norm_method,
+        pdf_report=pdf_report,
+        other_parameter=other_parameter,
+    ):
+        mageck_count2(
+            sgrna_list=sgrna_list,
+            samples=samples,
+            out_dir=out_dir,
+            prefix=prefix,
+            count_table=count_table,
             control_sgrnas=control_sgrnas,
             norm_method=norm_method,
             pdf_report=pdf_report,

@@ -265,6 +265,59 @@ def calculate_logCPM(
     return logcpm, norm_cpm
 
 
+def calculate_paired_logfcs(
+    logcpm: pd.DataFrame,
+    samples_to_baselines: Dict[str, str],
+    pseudocount: float = 1.0,
+) -> pd.DataFrame:
+    """
+    Calculates paired logFCs between logCPM columns of sort samples and their baselines.
+
+    Parameters
+    ----------
+    logcpm : pd.DataFrame
+        DataFrame containing log2CPM values.
+        Rows = sgRNAs (or genes), columns = samples.
+    samples_to_baselines : Dict[str, str]
+        Mapping {sample: baseline_sample}, e.g.
+        {
+            "SortedA1": "Total1",
+            "SortedA2": "Total2",
+            "SortedB1": "Total1",
+        }
+    pseudocount : float, optional
+        Only kept for API clarity/documentation.
+        Not used here because logCPM is assumed to be already computed.
+
+    Returns
+    -------
+    pd.DataFrame
+        DataFrame with one column per sample:
+        logFC_<sample> = logCPM(sample) - logCPM(baseline)
+    """
+    if not isinstance(logcpm, pd.DataFrame):
+        raise TypeError("logcpm must be a pandas DataFrame")
+
+    print(samples_to_baselines)
+    all_samples = list(samples_to_baselines.keys()) + list([s  for sam in samples_to_baselines.values() for s in sam])
+    print(all_samples)
+    missing = {
+        s for s in set(all_samples)
+        if s not in logcpm.columns
+    }
+    if missing:
+        raise ValueError(f"Missing columns in logcpm: {sorted(missing)}")
+
+    logfcs = pd.DataFrame(index=logcpm.index)
+
+    for sample, baseline in samples_to_baselines.items():
+        print(sample, baseline)
+        print(logcpm[baseline].mean(axis=1))
+        logfcs[f"logFC_{sample}"] = logcpm[sample] - logcpm[baseline].mean(axis=1)
+    print(logfcs.head())
+    return logfcs
+
+
 def calculate_norm_cpms_and_ma(
     count_df: DataFrame,
     sample_cols: List[str],
@@ -298,6 +351,9 @@ def calculate_norm_cpms_and_ma(
     df_expanded = count_df.copy()
     df_expanded = df_expanded.join(logcpm, how="left", rsuffix="_logcpm")
     df_expanded = df_expanded.join(ma_df, how="left")
+    if paired_replicates:
+        logfcs = calculate_paired_logfcs(logcpm, samples_to_baselines, pseudocount)
+        df_expanded = df_expanded.join(logfcs, how="left")
     df_expanded = df_expanded.reset_index()
     return df_expanded
 

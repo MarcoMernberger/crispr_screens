@@ -31,6 +31,7 @@ from .jobs.mageck_jobs import (
     spike_evaluation_report_job,
     write_significant_genes_rra_job,
     mageck_filter_count_job,
+    mageck_count_job2,
     write_count_table_with_MA_CPM_job,
 )
 from .jobs.plot_jobs import write_venn_job, write_volcano_plot_job

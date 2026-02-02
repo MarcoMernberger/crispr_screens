@@ -228,6 +228,78 @@ def mageck_count(
         shutil.copy(count_txt, count_tsv)
 
 
+def mageck_count2(
+    sgrna_list: Union[Path, str],
+    samples: dict,
+    out_dir: Union[Path, str],
+    prefix: str,
+    count_table: Optional[Union[Path, str]] = None,
+    control_sgrnas=Optional[: Union[Path, str]],
+    norm_method: str = "median",
+    pdf_report: bool = False,
+    other_parameter: Dict[str, str] = [],
+):
+
+    Path(out_dir).mkdir(parents=True, exist_ok=True)
+    if count_table is None:
+        if isinstance(list(samples.values())[1], list):
+            fastqs = " ".join(f"{",".join(fastq)}" for fastq in samples.values())
+        else:
+            fastqs = " ".join(fastq for fastq in samples.values())
+
+        sample_labels = ",".join(sample_name for sample_name in samples.keys())
+
+        command_parameters = [
+            "-l",
+            sgrna_list,
+            "--fastq",
+            fastqs,
+            "--sample-label",
+            sample_labels,
+            "-n",
+            f"{out_dir}/{prefix}",
+        ]
+    else:
+        command_parameters = [
+            "-k",
+            str(count_table),
+            "-n",
+            f"{out_dir}/{prefix}",
+        ]
+    if control_sgrnas is not None:
+        command_parameters.extend(["--control-sgrna", str(control_sgrnas)])
+
+    if norm_method is not None:
+        command_parameters.extend(["--norm-method", str(norm_method)])
+    else:
+        command_parameters.extend(["--norm-method", "none"])
+    if pdf_report:
+        command_parameters.append("--pdf-report")
+
+    command_parameters.extend(other_parameter)
+
+    command = ["mageck count"]
+    command.extend(command_parameters)
+    cmd = " ".join(command)
+
+    print(cmd)
+
+    mageck_count = subprocess.run(
+        cmd, capture_output=True, text=True, shell=True
+    )
+    print(mageck_count.stdout)
+    print(mageck_count.stderr)
+
+    # if pdf_report:
+    ro.r("rmarkdown::render")(f"{out_dir}/{prefix}.count_report.Rmd")
+
+    count_txt = Path(f"{out_dir}/{prefix}.count.txt")
+    count_tsv = Path(f"{out_dir}/{prefix}.count.tsv")
+    if count_txt.is_file():
+        shutil.copy(count_txt, count_tsv)
+
+
+
 def mageck_test(
     count_table: Union[Path, str],
     treatment_ids: List[str],
@@ -767,6 +839,7 @@ def filter_mageck_counts(
 
     # aggregations
     if aggregations:
+        print("here")
         for new_col, (cols, how) in aggregations.items():
             missing = [c for c in cols if c not in out.columns]
             if missing:
@@ -776,6 +849,7 @@ def filter_mageck_counts(
             frame = out[list(cols)].apply(pd.to_numeric, errors="coerce")
             used_cols_for_na.update(cols)
             out[new_col] = _aggregate(frame, how)
+            print(new_col in out)
 
     # Simple column filters
     for f in conditions.get("col_filters", []) or []:
