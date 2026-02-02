@@ -33,6 +33,7 @@ from .jobs.mageck_jobs import (
     mageck_filter_count_job,
     mageck_count_job2,
     write_count_table_with_MA_CPM_job,
+    write_significant_genes_job
 )
 from .jobs.plot_jobs import write_venn_job, write_volcano_plot_job
 from .jobs.qc_jobs import (
@@ -90,4 +91,5 @@ __all__ = [
     "compare_rankings_simple_job",
     "mageck_filter_count_job",
     "write_count_table_with_MA_CPM_job",
+    "write_significant_genes_job"
 ]

@@ -36,6 +36,7 @@ from crispr_screens.core.mageck import mageck_count, mageck_test, mageck_mle, ma
 from pandas import DataFrame
 from crispr_screens.services.io import generate_spike_evaluation_report
 import numpy as np
+import shutil
 
 
 def combine_comparison_output_job(
@@ -290,6 +291,7 @@ def mageck_count_job2(
             pdf_report=pdf_report,
             other_parameter=other_parameter,
         )
+        shutil.copyfile(count_table, outfile)
 
     return FileGeneratingJob(outfile, __dump).depends_on(dependencies)
 
@@ -764,6 +766,67 @@ def write_significant_genes_rra_job(
             logfc_threshold=logfc_threshold,
             direction=direction,
         )
+
+    return MultiFileGeneratingJob(outfiles, __dump).depends_on(dependencies)
+
+
+def write_significant_genes_job(
+    mageck_file: Union[str, Path],
+    fdr_threshold: float = 0.05,
+    logfc_threshold: float = 1.0,
+    direction: str = "both",  # "both", "pos", "neg"
+    fdr_column_pos: str = "pos|fdr",
+    fdr_column_neg: Optional[str] = "neg|fdr",
+    lfc_column_pos: str = "pos|lfc",
+    lfc_column_neg: Optional[str] = "neg|lfc",
+    method: str = "rra",
+    dependencies: List[Job] = [],
+) -> MultiFileGeneratingJob:
+    """
+    write_significant_genes_rra_job returns a job to write significant genes for
+    RRA results from mageck.
+
+    mageck_file : Union[str, Path]
+        The input mageck gene summary file.
+    fdr_threshold : float, optional
+        FDR threshold, by default 0.05
+    logfc_threshold : float, optional
+        LogFC threshold, by default 1.0
+    direction : str, optional
+        Direction of change: "both", "pos", "neg", by default "both"
+
+    Returns
+    -------
+    MultiFileGeneratingJob
+        Job that creates output files for enriched and depleted genes.
+    """
+    outfiles = [
+        mageck_file.with_suffix(".enriched.genes.tsv"),
+        mageck_file.with_suffix(".depleted.genes.tsv"),
+    ]
+
+    def __dump(
+        outfiles,
+        mageck_file=mageck_file,
+        fdr_threshold=fdr_threshold,
+        logfc_threshold=logfc_threshold,
+        fdr_column_pos=fdr_column_pos,
+        fdr_column_neg=fdr_column_neg,
+        lfc_column_pos=lfc_column_pos,
+        lfc_column_neg=lfc_column_neg,        
+        direction=direction,
+    ):
+        write_significant_genes_mageck(
+            mageck_file=mageck_file,
+            fdr_threshold=fdr_threshold,
+            logfc_threshold=logfc_threshold,
+            fdr_column_pos=fdr_column_pos,
+            fdr_column_neg=fdr_column_neg,
+            lfc_column_pos=lfc_column_pos,
+            lfc_column_neg=lfc_column_neg,        
+            direction=direction,
+        )
+
 
     return MultiFileGeneratingJob(outfiles, __dump).depends_on(dependencies)
 

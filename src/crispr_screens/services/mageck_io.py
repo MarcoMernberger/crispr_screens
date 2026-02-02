@@ -175,6 +175,9 @@ def write_significant_genes(
         LogFC threshold, by default 1.0
     direction : str, optional
         Direction of change: "both", "pos", "neg", by default "both"
+    method : str, optional
+        Method used: "rra" or "mle", by default "rra"
+    
     """
     outfile.parent.mkdir(parents=True, exist_ok=True)
     mageck_df = pd.read_csv(mageck_file, sep="\t")
@@ -185,15 +188,21 @@ def write_significant_genes(
         logfc_column=logfc_column,
         logfc_threshold=logfc_threshold,
         direction=direction,
+        method=method,
     )
     sig_genes_df.to_csv(outfile, sep="\t", index=False)
+    return outfile
 
-
-def write_significant_genes_rra(
+def write_significant_genes_both_directions(
     mageck_file: Union[str, Path],
     fdr_threshold: float = 0.05,
-    logfc_threshold: float = 1.0,
+    logfc_or_beta_threshold: float = 1.0,
     direction: str = "both",  # "both", "pos", "neg"
+    fdr_column_pos: str = "pos|fdr",
+    fdr_column_neg: Optional[str] = "neg|fdr",
+    lfc_column_pos: str = "pos|lfc",
+    lfc_column_neg: Optional[str] = "neg|lfc",
+    method: str = "rra",
 ) -> List[Path]:
     """
     write_significant_genes_rra for RRA results from mageck.
@@ -204,8 +213,8 @@ def write_significant_genes_rra(
         The input mageck gene summary file.
     fdr_threshold : float, optional
         FDR threshold, by default 0.05
-    logfc_threshold : float, optional
-        LogFC threshold, by default 1.0
+    logfc_or_beta_threshold : float, optional
+        LogFC threshold or beta score threshold, by default 1.0
     direction : str, optional
         Direction of change: "both", "pos", "neg", by default "both"
 
@@ -214,28 +223,44 @@ def write_significant_genes_rra(
     List[Path]
         List of output files for enriched and depleted genes.
     """
+    if method == "mle":
+        lfc_column_neg = lfc_column_pos
+        ldr_column_neg = fdr_column_pos
     outfiles = [
         mageck_file.with_suffix(".enriched.genes.tsv"),
         mageck_file.with_suffix(".depleted.genes.tsv"),
     ]
-    write_significant_genes(
-        outfiles[0],
-        mageck_file,
-        fdr_column="pos|fdr",
-        fdr_threshold=fdr_threshold,
-        logfc_column="pos|lfc",
-        logfc_threshold=logfc_threshold,
-        direction="pos",
-    )
-    write_significant_genes(
-        outfiles[1],
-        mageck_file,
-        fdr_column="neg|fdr",
-        fdr_threshold=fdr_threshold,
-        logfc_column="neg|lfc",
-        logfc_threshold=logfc_threshold,
-        direction="neg",
-    )
+    elif direction == "pos":
+        outfiles = [mageck_file.with_suffix(".enriched.genes.tsv")]
+    elif direction == "neg":
+        outfiles = [mageck_file.with_suffix(".depleted.genes.tsv")]
+    else:
+        raise ValueError(f"Invalid direction: {direction}")
+
+    if direction == "both" or direction == "pos":
+        write_significant_genes(
+            outfiles[0],
+            mageck_file,
+            fdr_column=fdr_column_pos,
+            fdr_threshold=fdr_threshold,
+            logfc_column="pos|lfc",
+            logfc_threshold=logfc_or_beta_threshold,
+            direction="pos",
+        )
+    if direction == "both" or direction == "neg":
+        write_significant_genes(
+            outfiles[1],
+            mageck_file,
+            fdr_column=fdr_column_neg,
+            fdr_threshold=fdr_threshold,
+            logfc_column=lfc_column_neg,
+            logfc_threshold=logfc_threshold,
+            direction="neg",
+        )
+    if direction == "pos":
+        outfiles = [outfiles[0]]
+    elif direction == "neg":
+        outfiles = [outfiles[1]]
     return outfiles
 
 

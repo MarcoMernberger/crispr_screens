@@ -368,7 +368,7 @@ def mageck_test(
 
 def mageck_mle(
     count_table: Union[Path, str],
-    design_matrix: str,
+    design_matrix: Union[Path, str],
     out_dir: Union[Path, str],
     prefix: str,
     control_sgrnas: Optional[Union[Path, str]] = None,
@@ -380,11 +380,11 @@ def mageck_mle(
 
     command_parameters = [
         "-k",
-        count_table,
+        str(count_table),
         "-d",
-        design_matrix,
+        str(design_matrix),
         "-n",
-        f"{out_dir}/{prefix}",
+        f"{str(out_dir)}/{str(prefix)}",
     ]
 
     if control_sgrnas is not None:
