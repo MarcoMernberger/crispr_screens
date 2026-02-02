@@ -258,6 +258,7 @@ def standard_qc_job(
     metadata_tsv: Union[Path, str, None] = None,
     control_sgrna_txt: Union[Path, str, None] = None,
     baseline_condition: str = "total",
+    samples_to_select: Optional[List[str]] = None,
     sgrna_col: str = "sgRNA",
     gene_col: str = "Gene",
     delimiter: str = "_",
@@ -287,6 +288,10 @@ def standard_qc_job(
         Path to control sgRNA file. If provided, includes control QC.
     baseline_condition : str
         Baseline condition name (e.g., "total", "T0").
+    samples_to_select : list of str, optional
+        If provided, only analyze these samples from count table.
+    prefix : str
+        Filename prefix for output files.
     sgrna_col : str
         sgRNA column name.
     gene_col : str
@@ -362,6 +367,7 @@ def standard_qc_job(
         metadata_tsv=metadata_tsv,
         control_sgrna_txt=control_sgrna_txt,
         baseline_condition=baseline_condition,
+        samples_to_select=samples_to_select,
         sgrna_col=sgrna_col,
         gene_col=gene_col,
         delimiter=delimiter,
@@ -377,6 +383,7 @@ def standard_qc_job(
             metadata_tsv=metadata_tsv,
             control_sgrna_txt=control_sgrna_txt,
             baseline_condition=baseline_condition,
+            samples_to_select=samples_to_select,
             sgrna_col=sgrna_col,
             gene_col=gene_col,
             delimiter=delimiter,

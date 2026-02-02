@@ -153,7 +153,7 @@ def write_significant_genes(
     fdr_column: str = "pos|fdr",
     fdr_threshold: float = 0.05,
     logfc_column: str = "pos|lfc",
-    logfc_threshold: float = 1.0,
+    logfc_or_beta_threshold: float = 1.0,
     direction: str = "both",  # "both", "pos", "neg"
 ):
     """
@@ -171,8 +171,8 @@ def write_significant_genes(
         FDR threshold, by default 0.05
     logfc_column : str, optional
         LogFC column name, by default "pos|lfc"
-    logfc_threshold : float, optional
-        LogFC threshold, by default 1.0
+    logfc_or_beta_threshold : float, optional
+        LogFC or beta threshold, by default 1.0
     direction : str, optional
         Direction of change: "both", "pos", "neg", by default "both"
     method : str, optional
@@ -186,14 +186,13 @@ def write_significant_genes(
         fdr_column=fdr_column,
         fdr_threshold=fdr_threshold,
         logfc_column=logfc_column,
-        logfc_threshold=logfc_threshold,
+        logfc_or_beta_threshold=logfc_or_beta_threshold,
         direction=direction,
-        method=method,
     )
     sig_genes_df.to_csv(outfile, sep="\t", index=False)
     return outfile
 
-def write_significant_genes_both_directions(
+def write_significant_genes_mageck(
     mageck_file: Union[str, Path],
     fdr_threshold: float = 0.05,
     logfc_or_beta_threshold: float = 1.0,
@@ -226,10 +225,11 @@ def write_significant_genes_both_directions(
     if method == "mle":
         lfc_column_neg = lfc_column_pos
         ldr_column_neg = fdr_column_pos
-    outfiles = [
-        mageck_file.with_suffix(".enriched.genes.tsv"),
-        mageck_file.with_suffix(".depleted.genes.tsv"),
-    ]
+    if direction == "both":
+        outfiles = [
+            mageck_file.with_suffix(".enriched.genes.tsv"),
+            mageck_file.with_suffix(".depleted.genes.tsv"),
+        ]
     elif direction == "pos":
         outfiles = [mageck_file.with_suffix(".enriched.genes.tsv")]
     elif direction == "neg":
@@ -244,7 +244,7 @@ def write_significant_genes_both_directions(
             fdr_column=fdr_column_pos,
             fdr_threshold=fdr_threshold,
             logfc_column="pos|lfc",
-            logfc_threshold=logfc_or_beta_threshold,
+            logfc_or_beta_threshold=logfc_or_beta_threshold,
             direction="pos",
         )
     if direction == "both" or direction == "neg":
@@ -254,7 +254,7 @@ def write_significant_genes_both_directions(
             fdr_column=fdr_column_neg,
             fdr_threshold=fdr_threshold,
             logfc_column=lfc_column_neg,
-            logfc_threshold=logfc_threshold,
+            logfc_or_beta_threshold=logfc_or_beta_threshold,
             direction="neg",
         )
     if direction == "pos":

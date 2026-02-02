@@ -620,7 +620,7 @@ def get_significant_genes(
     fdr_column: str = "pos|fdr",
     fdr_threshold: float = 0.05,
     logfc_column: str = "pos|lfc",
-    logfc_threshold: float = 1.0,
+    logfc_or_beta_threshold: float = 1.0,
     direction: str = "both",  # "both", "pos", "neg"
 ) -> DataFrame:
     """
@@ -637,7 +637,7 @@ def get_significant_genes(
     logfc_column : str, optional
         logFC column, by default "pos|lfc"
     logfc_threshold : float, optional
-        minimum fold change, by default 1.0
+        minimum fold change or beta, by default 1.0
     direction : str, optional
         positive or nagative selection, by default "both"
 
@@ -649,18 +649,20 @@ def get_significant_genes(
     if direction == "both":
         sig_genes = df_mageck[
             (df_mageck[fdr_column] <= fdr_threshold)
-            & (df_mageck[logfc_column].abs() >= logfc_threshold)
+            & (df_mageck[logfc_column].abs() >= logfc_or_beta_threshold)
         ]
     elif direction == "pos":
         sig_genes = df_mageck[
             (df_mageck[fdr_column] <= fdr_threshold)
-            & (df_mageck[logfc_column] >= logfc_threshold)
+            & (df_mageck[logfc_column] >= logfc_or_beta_threshold)
         ]
+        sig_genes = sig_genes.sort_values(by=logfc_column, ascending=False)
     elif direction == "neg":
         sig_genes = df_mageck[
             (df_mageck[fdr_column] <= fdr_threshold)
-            & (df_mageck[logfc_column] <= -logfc_threshold)
+            & (df_mageck[logfc_column] <= -logfc_or_beta_threshold)
         ]
+        sig_genes = sig_genes.sort_values(by=logfc_column, ascending=True)
     else:
         raise ValueError("direction must be one of: 'both', 'pos', or 'neg'")
     return sig_genes

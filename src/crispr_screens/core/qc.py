@@ -397,6 +397,7 @@ def generate_standard_qc_report(
     metadata_tsv: Optional[Union[Path, str]] = None,
     control_sgrna_txt: Optional[Union[Path, str]] = None,
     baseline_condition: str = "total",
+    samples_to_select: Optional[List[str]] = None,
     sgrna_col: str = "sgRNA",
     gene_col: str = "Gene",
     delimiter: str = "_",
@@ -442,6 +443,8 @@ def generate_standard_qc_report(
         Whether replicates are paired.
     save_formats : list of str, optional
         Plot formats to save. Default: ["png"].
+    samples_to_select : list of str, optional
+        If provided, only analyze these samples from count table.
 
     Returns
     -------
@@ -517,6 +520,9 @@ def generate_standard_qc_report(
     # Step 1: Load data
     print("\n[1/9] Loading count data...")
     count_df, sample_cols = read_counts(count_tsv, sgrna_col, gene_col)
+    if samples_to_select is not None:
+        sample_cols = [s for s in sample_cols if s in samples_to_select]
+        count_df = count_df[[sgrna_col, gene_col] + sample_cols]
     print(f"  Loaded {len(count_df)} sgRNAs, {len(sample_cols)} samples")
 
     # Step 2: Parse/load metadata

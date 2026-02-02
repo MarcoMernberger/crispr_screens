@@ -23,7 +23,7 @@ from crispr_screens.services.mageck_io import (
     create_query_control_sgrna_frames,
     create_combine_gene_info_with_mageck_output,
     write_spiked_count_table,
-    write_significant_genes_rra,
+    write_significant_genes_mageck,
     write_filter_mageck_counts,
     write_count_table_with_MA_CPM,
 )
@@ -773,7 +773,7 @@ def write_significant_genes_rra_job(
 def write_significant_genes_job(
     mageck_file: Union[str, Path],
     fdr_threshold: float = 0.05,
-    logfc_threshold: float = 1.0,
+    logfc_or_beta_threshold: float = 1.0,
     direction: str = "both",  # "both", "pos", "neg"
     fdr_column_pos: str = "pos|fdr",
     fdr_column_neg: Optional[str] = "neg|fdr",
@@ -790,8 +790,8 @@ def write_significant_genes_job(
         The input mageck gene summary file.
     fdr_threshold : float, optional
         FDR threshold, by default 0.05
-    logfc_threshold : float, optional
-        LogFC threshold, by default 1.0
+    logfc_or_beta_threshold : float, optional
+        LogFC threshold or beta score threshold, by default 1.0
     direction : str, optional
         Direction of change: "both", "pos", "neg", by default "both"
 
@@ -809,7 +809,7 @@ def write_significant_genes_job(
         outfiles,
         mageck_file=mageck_file,
         fdr_threshold=fdr_threshold,
-        logfc_threshold=logfc_threshold,
+        logfc_or_beta_threshold=logfc_or_beta_threshold,
         fdr_column_pos=fdr_column_pos,
         fdr_column_neg=fdr_column_neg,
         lfc_column_pos=lfc_column_pos,
@@ -819,7 +819,7 @@ def write_significant_genes_job(
         write_significant_genes_mageck(
             mageck_file=mageck_file,
             fdr_threshold=fdr_threshold,
-            logfc_threshold=logfc_threshold,
+            logfc_or_beta_threshold=logfc_or_beta_threshold,
             fdr_column_pos=fdr_column_pos,
             fdr_column_neg=fdr_column_neg,
             lfc_column_pos=lfc_column_pos,
