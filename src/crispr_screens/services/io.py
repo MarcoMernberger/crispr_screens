@@ -588,6 +588,7 @@ def standard_qc_report(
     metadata_tsv: Union[Path, str, None] = None,
     control_sgrna_txt: Union[Path, str, None] = None,
     baseline_condition: str = "total",
+    samples_to_select: Optional[List[str]] = None,
     **kwargs,
 ) -> Dict:
     """
@@ -607,6 +608,8 @@ def standard_qc_report(
         Path to control sgRNA file.
     baseline_condition : str
         Baseline condition name.
+    samples_to_select : list of str, optional
+        If provided, only analyze these samples from count table.
     **kwargs
         Additional arguments passed to generate_standard_qc_report.
 
@@ -621,6 +624,7 @@ def standard_qc_report(
         metadata_tsv=metadata_tsv,
         control_sgrna_txt=control_sgrna_txt,
         baseline_condition=baseline_condition,
+        samples_to_select=samples_to_select,
         **kwargs,
     )
 

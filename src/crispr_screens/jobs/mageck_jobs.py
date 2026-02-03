@@ -815,6 +815,7 @@ def write_significant_genes_job(
         lfc_column_pos=lfc_column_pos,
         lfc_column_neg=lfc_column_neg,        
         direction=direction,
+        method=method,
     ):
         write_significant_genes_mageck(
             mageck_file=mageck_file,
@@ -825,6 +826,7 @@ def write_significant_genes_job(
             lfc_column_pos=lfc_column_pos,
             lfc_column_neg=lfc_column_neg,        
             direction=direction,
+            method=method,
         )
 
 

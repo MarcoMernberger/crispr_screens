@@ -224,7 +224,11 @@ def write_significant_genes_mageck(
     """
     if method == "mle":
         lfc_column_neg = lfc_column_pos
-        ldr_column_neg = fdr_column_pos
+        fdr_column_neg = fdr_column_pos
+    elif method == "rra":
+        pass
+    else:
+        raise ValueError(f"Invalid method: {method}")
     if direction == "both":
         outfiles = [
             mageck_file.with_suffix(".enriched.genes.tsv"),
@@ -243,7 +247,7 @@ def write_significant_genes_mageck(
             mageck_file,
             fdr_column=fdr_column_pos,
             fdr_threshold=fdr_threshold,
-            logfc_column="pos|lfc",
+            logfc_column=lfc_column_pos,
             logfc_or_beta_threshold=logfc_or_beta_threshold,
             direction="pos",
         )
