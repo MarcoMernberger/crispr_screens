@@ -177,7 +177,7 @@ def write_significant_genes(
         Direction of change: "both", "pos", "neg", by default "both"
     method : str, optional
         Method used: "rra" or "mle", by default "rra"
-    
+
     """
     outfile.parent.mkdir(parents=True, exist_ok=True)
     mageck_df = pd.read_csv(mageck_file, sep="\t")
@@ -191,6 +191,7 @@ def write_significant_genes(
     )
     sig_genes_df.to_csv(outfile, sep="\t", index=False)
     return outfile
+
 
 def write_significant_genes_mageck(
     mageck_file: Union[str, Path],
@@ -319,7 +320,9 @@ def write_filter_mageck_counts(
     colums_to_keep = [sgrna_col, gene_col] + samples
     if exclude_samples is not None:
         colums_to_keep = [c for c in colums_to_keep if c not in exclude_samples]
-    filtered_count_df[colums_to_keep].to_csv(outfile, sep="\t", index=False)
+    filtered_count_df[colums_to_keep].to_csv(
+        str(outfile), sep="\t", index=False
+    )
     filtered_count_df.to_csv(outfile2, sep="\t", index=False)
     return outfile
 

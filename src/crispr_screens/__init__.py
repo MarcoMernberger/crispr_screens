@@ -35,13 +35,14 @@ from .jobs.mageck_jobs import (
     write_count_table_with_MA_CPM_job,
     write_significant_genes_job
 )
-from .jobs.plot_jobs import write_venn_job, write_volcano_plot_job
+from .jobs.plot_jobs import write_venn_job, write_volcano_plot_job, plot_ranking_metric_heatmaps_job
 from .jobs.qc_jobs import (
     control_qc_job,
     standard_qc_job,
     mageck_report_job,
     pairing_qc_job,
     pairing_qc_plots_job,
+    calculate_ranking_metrics_job
     # comprehensive_qc_job,
 )
 from .jobs.method_comparison_jobs import (
@@ -91,5 +92,7 @@ __all__ = [
     "compare_rankings_simple_job",
     "mageck_filter_count_job",
     "write_count_table_with_MA_CPM_job",
-    "write_significant_genes_job"
+    "write_significant_genes_job",
+    "calculate_ranking_metrics_job",
+    "plot_ranking_metric_heatmaps_job"
 ]

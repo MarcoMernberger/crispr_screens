@@ -7,9 +7,13 @@ from pypipegraph2 import (
 )
 from pathlib import Path
 from typing import Dict, Optional, Union, List, Tuple
-from crispr_screens.services.plots_io import write_venn, write_volcano_plot
+from crispr_screens.services.plots_io import (
+    write_venn,
+    write_volcano_plot,
+    create_plot_ranking_metric_heatmaps,
+)
 from crispr_screens.core.plots import volcano_plot
-from pandas import DataFrame
+from pandas import DataFrame  # noqa F401
 
 
 def write_venn_job(
@@ -154,4 +158,68 @@ def write_volcano_plot_job(
         FileGeneratingJob(Path(folder) / filename, __dump)
         .depends_on(dependencies)
         .depends_on([io_func_invariant, core_func_invariant, params])
+    )
+
+
+def plot_ranking_metric_heatmaps_job(
+    output_file: Union[Path, str],
+    metrics_df_file: Union[str, Path],
+    metrics: List[str] = ("kendall_tau", "spearman_r", "dcg"),
+    figsize: tuple[float, float] | None = None,
+    dependencies: Optional[List[Job]] = None,
+) -> Job:
+    """
+    plot_ranking_metric_heatmaps_job creates a job that generates heatmaps for
+    the specified ranking metrics and saves the figure to the specified output
+    file. It depends on the create_plot_ranking_metric_heatmaps function and
+    any additional dependencies provided.
+
+    Parameters
+    ----------
+    output_file : Union[Path, str]
+        The path to the output file where the heatmap will be saved.
+    metrics_df_file : Union[Str, Path]
+        The path to the input DataFrame file containing the ranking metrics.
+    metrics : List[str], optional
+        The ranking metrics to include in the heatmap, by default
+        ("kendall_tau", "spearman_r", "dcg").
+    figsize : tuple[float, float] | None, optional
+        The size of the figure to create, by default None.
+    dependencies : Optional[List[Job]], optional
+        Any additional dependencies for the job, by default None.
+
+    Returns
+    -------
+    Job
+        The job that generates the heatmap.
+    """
+
+    def __dump(
+        outfiles,
+        output_file=output_file,
+        metrics_df_file=metrics_df_file,
+        metrics=metrics,
+        figsize=figsize,
+    ):
+        create_plot_ranking_metric_heatmaps(
+            output_file=output_file,
+            metrics_df_file=metrics_df_file,
+            metrics=metrics,
+            figsize=figsize,
+        )
+
+    if dependencies is None:
+        dependencies = []
+
+    return (
+        FileGeneratingJob(Path(output_file), __dump)
+        .depends_on(
+            [
+                FunctionInvariant(
+                    "create_plot_ranking_metric_heatmaps",
+                    create_plot_ranking_metric_heatmaps,
+                )
+            ]
+        )
+        .depends_on(dependencies)
     )

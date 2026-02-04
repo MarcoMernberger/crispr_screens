@@ -1,4 +1,9 @@
-from crispr_screens.core.plots import plot_selected_venn, volcano_plot
+import pandas as pd
+from crispr_screens.core.plots import (
+    plot_selected_venn,
+    volcano_plot,
+    plot_ranking_metric_heatmaps,
+)
 from pathlib import Path
 from typing import Union, Tuple, Optional, Dict, List
 from pandas import DataFrame
@@ -80,3 +85,39 @@ def write_volcano_plot(
         label_fontsize=label_fontsize,
     )
     save_figure(fig, Path(folder), str(filename))
+
+
+def create_plot_ranking_metric_heatmaps(
+    output_file: Union[Path, str],
+    metrics_df_file: Union[str, Path],
+    metrics: List[str] = ("kendall_tau", "spearman_r", "dcg"),
+    figsize: tuple[float, float] | None = None,
+) -> Path:
+    """
+    create_plot_ranking_metric_heatmaps creates heatmaps for the specified
+    ranking metrics and saves the figure to the specified output file.
+
+    Parameters
+    ----------
+    output_file : Union[Path, str]
+        Path to the output file where the figure will be saved.
+    metrics_df : pd.DataFrame
+        DataFrame containing the ranking metrics.
+    metrics : List[str], optional
+        List of ranking metrics to plot, by default ("kendall_tau", "spearman_r", "dcg")
+    figsize : tuple[float, float] | None, optional
+        Figure size, by default None
+
+    Returns
+    -------
+    Path
+        _description_
+    """
+    metrics_df = pd.read_csv(metrics_df_file, sep="\t")
+    fig = plot_ranking_metric_heatmaps(
+        metrics_df=metrics_df,
+        metrics=metrics,
+        figsize=figsize,
+    )
+    save_figure(fig, Path(output_file).parent, Path(output_file).stem)
+    return Path(output_file)

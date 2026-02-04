@@ -8,6 +8,7 @@ from crispr_screens.core.qc import (
     control_sgrna_qc,
     export_control_counts_and_cpm,
     generate_standard_qc_report as _generate_standard_qc_report,
+    calculate_ranking_metrics,
 )
 from crispr_screens.core.mageck_report import (
     generate_mageck_report as _generate_mageck_report,
@@ -934,3 +935,37 @@ def write_pairing_decision_summary_plot(
     )
 
     save_figure(fig, Path(folder), filename)
+
+
+def write_rankings(
+    output_file: Union[Path, str],
+    gene_ranking_files_dict: Dict[str, Union[Path, str]],
+    gene_id_columns: Dict[str, str],
+    ranking_columns: Dict[str, str],
+    ascending: Dict[str, bool],
+) -> Path:
+    """
+    write_rankings writes gene rankings to disk.
+
+    Parameters
+    ----------
+    gene_ranking_files_dict : Dict[str, Union[Path, str]]
+        Dictionary of names to gene ranking files.
+    gene_id_columns : Dict[str, str]
+        ID column names for each ranking file.
+    ranking_columns : Dict[str, str]
+        Ranking column names for each ranking file.
+
+    Returns
+    -------
+    Path
+        Path to the output file.
+    """
+    df_out = calculate_ranking_metrics(
+        gene_ranking_files_dict=gene_ranking_files_dict,
+        gene_id_columns=gene_id_columns,
+        ranking_columns=ranking_columns,
+        ascending=ascending,
+    )
+    df_out.to_csv(output_file, sep="\t", index=False)
+    return Path(output_file)

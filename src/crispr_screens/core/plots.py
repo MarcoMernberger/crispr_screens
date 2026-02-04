@@ -2720,3 +2720,78 @@ def plot_qq(pvalues, figsize=(8, 8), title="QQ-Plot of p-values", ax=None):
     metrics = {"lambda_gc": lambda_gc}
 
     return fig, ax, metrics
+
+
+def plot_ranking_metric_heatmaps(
+    metrics_df: pd.DataFrame,
+    metrics: List[str] = ("kendall_tau", "spearman_r", "dcg"),
+    figsize: tuple[float, float] | None = None,
+) -> plt.Figure:
+    """
+    Create a combined figure with one heatmap per ranking similarity metric.
+
+    Parameters
+    ----------
+    metrics_df : pd.DataFrame
+        Output of calculate_ranking_metrics with columns:
+        ranking_a, ranking_b, <metric columns>
+    metrics : Sequence[str]
+        Metric columns to plot as heatmaps.
+    figsize : tuple, optional
+        Figure size.
+
+    Returns
+    -------
+    matplotlib.figure.Figure
+    """
+    rankings = sorted(
+        set(metrics_df["ranking_a"]).union(metrics_df["ranking_b"])
+    )
+    n = len(metrics)
+    if figsize is None:
+        figsize = (5 * n, 4.5)
+
+    fig, axes = plt.subplots(1, n, figsize=figsize, constrained_layout=True)
+    if n == 1:
+        axes = [axes]
+
+    for ax, metric in zip(axes, metrics):
+        mat = pd.DataFrame(
+            np.nan,
+            index=rankings,
+            columns=rankings,
+            dtype=float,
+        )
+
+        # fill symmetric matrix
+        for _, row in metrics_df.iterrows():
+            a = row["ranking_a"]
+            b = row["ranking_b"]
+            val = row[metric]
+            mat.loc[a, b] = val
+            mat.loc[b, a] = val
+
+        np.fill_diagonal(mat.values, 1.0)
+
+        im = ax.imshow(
+            mat.values, vmin=np.nanmin(mat.values), vmax=np.nanmax(mat.values)
+        )
+
+        ax.set_title(metric)
+        ax.set_xticks(range(len(rankings)))
+        ax.set_yticks(range(len(rankings)))
+        ax.set_xticklabels(rankings, rotation=45, ha="right", fontsize=8)
+        ax.set_yticklabels(rankings, fontsize=8)
+
+        # annotate cells
+        for i in range(len(rankings)):
+            for j in range(len(rankings)):
+                val = mat.iat[i, j]
+                if np.isfinite(val):
+                    ax.text(
+                        j, i, f"{val:.2f}", ha="center", va="center", fontsize=8
+                    )
+
+        fig.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
+
+    return fig

@@ -243,7 +243,9 @@ def mageck_count2(
     Path(out_dir).mkdir(parents=True, exist_ok=True)
     if count_table is None:
         if isinstance(list(samples.values())[1], list):
-            fastqs = " ".join(f"{",".join(fastq)}" for fastq in samples.values())
+            fastqs = " ".join(
+                f"{",".join(fastq)}" for fastq in samples.values()
+            )
         else:
             fastqs = " ".join(fastq for fastq in samples.values())
 
@@ -297,7 +299,6 @@ def mageck_count2(
     count_tsv = Path(f"{out_dir}/{prefix}.count.tsv")
     if count_txt.is_file():
         shutil.copy(count_txt, count_tsv)
-
 
 
 def mageck_test(
@@ -841,7 +842,6 @@ def filter_mageck_counts(
 
     # aggregations
     if aggregations:
-        print("here")
         for new_col, (cols, how) in aggregations.items():
             missing = [c for c in cols if c not in out.columns]
             if missing:
@@ -851,7 +851,6 @@ def filter_mageck_counts(
             frame = out[list(cols)].apply(pd.to_numeric, errors="coerce")
             used_cols_for_na.update(cols)
             out[new_col] = _aggregate(frame, how)
-            print(new_col in out)
 
     # Simple column filters
     for f in conditions.get("col_filters", []) or []:

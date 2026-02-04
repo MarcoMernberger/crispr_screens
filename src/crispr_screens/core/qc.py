@@ -9,17 +9,19 @@ conditions.
 import json
 import warnings
 import numpy as np
-import pandas as pd
-import matplotlib.pyplot as plt
+import pandas as pd  # noqa: F401
+import matplotlib.pyplot as plt  # noqa: F401
+import itertools
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple, Union
 from scipy import stats
-from pandas import DataFrame, Series
+from pandas import DataFrame, Series  # noqa: F401
 from .plots import (
     plot_ma_grid,
     plot_library_pca,
     plot_sample_correlations,
 )
+from scipy.stats import kendalltau, spearmanr
 
 
 def calculate_size_factors_for_method(
@@ -299,12 +301,11 @@ def calculate_paired_logfcs(
         raise TypeError("logcpm must be a pandas DataFrame")
 
     print(samples_to_baselines)
-    all_samples = list(samples_to_baselines.keys()) + list([s  for sam in samples_to_baselines.values() for s in sam])
+    all_samples = list(samples_to_baselines.keys()) + list(
+        [s for sam in samples_to_baselines.values() for s in sam]
+    )
     print(all_samples)
-    missing = {
-        s for s in set(all_samples)
-        if s not in logcpm.columns
-    }
+    missing = {s for s in set(all_samples) if s not in logcpm.columns}
     if missing:
         raise ValueError(f"Missing columns in logcpm: {sorted(missing)}")
 
@@ -313,7 +314,9 @@ def calculate_paired_logfcs(
     for sample, baseline in samples_to_baselines.items():
         print(sample, baseline)
         print(logcpm[baseline].mean(axis=1))
-        logfcs[f"logFC_{sample}"] = logcpm[sample] - logcpm[baseline].mean(axis=1)
+        logfcs[f"logFC_{sample}"] = logcpm[sample] - logcpm[baseline].mean(
+            axis=1
+        )
     print(logfcs.head())
     return logfcs
 
@@ -346,13 +349,13 @@ def calculate_norm_cpms_and_ma(
             conditions_dict, baseline_condition
         )
     ma_df = calculate_ma(samples_to_baselines, logcpm)
-    print(logcpm.head())
-    print(ma_df.head())
     df_expanded = count_df.copy()
     df_expanded = df_expanded.join(logcpm, how="left", rsuffix="_logcpm")
     df_expanded = df_expanded.join(ma_df, how="left")
     if paired_replicates:
-        logfcs = calculate_paired_logfcs(logcpm, samples_to_baselines, pseudocount)
+        logfcs = calculate_paired_logfcs(
+            logcpm, samples_to_baselines, pseudocount
+        )
         df_expanded = df_expanded.join(logfcs, how="left")
     df_expanded = df_expanded.reset_index()
     return df_expanded
@@ -2554,3 +2557,84 @@ def _generate_summary_markdown(
 #         "qc_results": qc_results,
 #         "files": saved_files,
 #     }
+
+
+def _dcg_from_ranks(ref_ranks: np.ndarray, test_ranks: np.ndarray) -> float:
+    """
+    Simple DCG-style similarity:
+    - relevance = 1 / ref_rank
+    - order by test_rank
+    - normalized by ideal DCG
+    """
+    if len(ref_ranks) == 0:
+        return np.nan
+
+    rel = 1.0 / ref_ranks
+    order_test = np.argsort(test_ranks)
+    order_ideal = np.argsort(ref_ranks)
+
+    def dcg(order):
+        rel_o = rel[order]
+        discounts = 1.0 / np.log2(np.arange(2, len(rel_o) + 2))
+        return np.sum(rel_o * discounts)
+
+    ideal = dcg(order_ideal)
+    if ideal == 0:
+        return np.nan
+
+    return dcg(order_test) / ideal
+
+
+def calculate_ranking_metrics(
+    gene_ranking_files_dict: Dict[str, Union[Path, str]],
+    gene_id_columns: Dict[str, str],
+    ranking_columns: Dict[str, str],
+    ascending: Dict[str, bool],
+) -> pd.DataFrame:
+    """
+    Calculate pairwise ranking similarity metrics between multiple gene rankings.
+
+    Returns a long-format DataFrame with:
+    ranking_a, ranking_b, n_genes, kendall_tau, spearman_r, dcg
+    """
+    # load all rankings
+    rankings = {}
+    for name, path in gene_ranking_files_dict.items():
+        df = pd.read_csv(path, sep=None, engine="python")
+        df = df[[gene_id_columns[name], ranking_columns[name]]].copy()
+        df.columns = ["gene_id", "rank"]
+        df["gene_id"] = df["gene_id"].astype(str)
+        df["rank"] = pd.to_numeric(df["rank"], errors="coerce")
+        df = df.sort_values("rank", ascending=ascending[name])
+        df = df.dropna().drop_duplicates("gene_id")
+        rankings[name] = df
+    results = []
+
+    for a, b in itertools.combinations(rankings.keys(), 2):
+        df = rankings[a].merge(
+            rankings[b],
+            on="gene_id",
+            suffixes=("_a", "_b"),
+            how="inner",
+        )
+
+        ra = df["rank_a"].to_numpy()
+        rb = df["rank_b"].to_numpy()
+
+        results.append(
+            {
+                "ranking_a": a,
+                "ranking_b": b,
+                "n_genes": len(df),
+                "kendall_tau": kendalltau(ra, rb).correlation,
+                "spearman_r": spearmanr(ra, rb).correlation,
+                "dcg": np.nanmean(
+                    [
+                        _dcg_from_ranks(ra, rb),
+                        _dcg_from_ranks(rb, ra),
+                    ]
+                ),
+            }
+        )
+
+    return pd.DataFrame(results)

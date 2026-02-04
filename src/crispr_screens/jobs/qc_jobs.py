@@ -7,9 +7,10 @@ from pypipegraph2 import (
     MultiFileGeneratingJob,
     FunctionInvariant,
     ParameterInvariant,
+    FileGeneratingJob,
 )
 from pathlib import Path
-from typing import List, Union, Optional
+from typing import List, Union, Optional, Dict
 from crispr_screens.services.io import (
     generate_control_qc_report,
     standard_qc_report,
@@ -26,6 +27,7 @@ from crispr_screens.core.qc import (
     choose_best_normalization,
     recommend_analysis_method,
 )
+from crispr_screens.services.io import write_rankings
 
 
 def control_qc_job(
@@ -1237,3 +1239,49 @@ def pairing_qc_plots_job(
     )
 
     return job
+
+
+def calculate_ranking_metrics_job(
+    output_file: Union[Path, str],
+    gene_ranking_files_dict: Dict[str, Union[Path, str]],
+    gene_id_columns: Dict[str, str],
+    ranking_columns: Dict[str, str],
+    ascending: Dict[str, bool],
+    dependencies: Optional[List[Job]] = None,
+) -> Job:
+    """
+    Returns a job that writes gene rankings to disk.
+
+    Parameters
+    ----------
+    gene_ranking_files_dict : Dict[str, Union[Path, str]]
+        Dictionary of names to gene ranking files.
+    gene_id_columns : Dict[str, str]
+        ID column names for each ranking file.
+    ranking_columns : Dict[str, str]
+        Ranking column names for each ranking file.
+
+    Returns
+    -------
+    Path
+        Path to the output file.
+    """
+    if dependencies is None:
+        dependencies = []
+
+    def __dump(
+        output_file,
+        gene_ranking_files_dict=gene_ranking_files_dict,
+        gene_id_columns=gene_id_columns,
+        ranking_columns=ranking_columns,
+        ascending=ascending,
+    ):
+        write_rankings(
+            output_file=output_file,
+            gene_ranking_files_dict=gene_ranking_files_dict,
+            gene_id_columns=gene_id_columns,
+            ranking_columns=ranking_columns,
+            ascending=ascending,
+        )
+
+    return FileGeneratingJob(output_file, __dump).depends_on(dependencies)
