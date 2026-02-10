@@ -2602,10 +2602,11 @@ def calculate_ranking_metrics(
     for name, path in gene_ranking_files_dict.items():
         df = pd.read_csv(path, sep=None, engine="python")
         df = df[[gene_id_columns[name], ranking_columns[name]]].copy()
-        df.columns = ["gene_id", "rank"]
+        df = df.sort_values(by=ranking_columns[name], ascending=ascending[name])
+        df.columns = ["gene_id", "sort_value"]
+        df["rank"] = np.arange(1, len(df) + 1)
         df["gene_id"] = df["gene_id"].astype(str)
         df["rank"] = pd.to_numeric(df["rank"], errors="coerce")
-        df = df.sort_values("rank", ascending=ascending[name])
         df = df.dropna().drop_duplicates("gene_id")
         rankings[name] = df
     results = []
